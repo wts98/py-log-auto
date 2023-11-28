@@ -19,9 +19,10 @@ parser.add_argument('-v', '--verbose', action="count", help='enable verbose outp
 parser.add_argument('-c', '--path', type=str, nargs='?', help='custom path to logs, format should be "/PATH/TO/LOG", absolute path are recommended.', dest='ptl')
 args = parser.parse_args()
 print(args.Run_OP, " is the running option I think")
-initso= subprocess.Popen(['ps', '-p', '1', '-o' 'comm='], stdout=subprocess.PIPE) # Get name of 1st ps (i.e. the name of the init system)
-init = initso.stdout.read()
+
 if 1 <= args.Run_OP <= 3: #Check if run option is out of 1-3 range
+    initso= subprocess.Popen(['ps', '-p', '1', '-o' 'comm='], stdout=subprocess.PIPE) # Get name of 1st ps (i.e. the name of the init system)
+    init = initso.stdout.read()
     if args.Run_OP == 1:
         print("Log Gathering Will be carried out") 
         destination = Path.cwd()
@@ -59,8 +60,14 @@ if 1 <= args.Run_OP <= 3: #Check if run option is out of 1-3 range
                             print(le.strip()," is not valid path")
         
         if init == 'systemd': #check if init system is systemd
-            srvs = open("srvs.lst", "w")
-            subprocess.call(['systemctl', 'list-units', '--type=service'], stdout=srvs) #Get services in systemd style
+            srvs_enabled = open("srvs.lst.enabled", "w")
+            subprocess.call(['systemctl', 'list-units', '--type=service', '--state=enabled'], stdout=srvs_enabled) #Get services in systemd style
+            srvs_disabled = open("srvs.lst.disabled", "w")
+            subprocess.call(['systemctl', 'list-units', '--type=service', '--state=disabled'], stdout=srvs_disabled) #Get services in systemd style
+            srvs_static = open("srvs.lst.static", "w")
+            subprocess.call(['systemctl', 'list-units', '--type=service', '--state=static'], stdout=srvs_static) #Get services in systemd style
+            srvs_masked = open("srvs.lst", "w")
+            subprocess.call(['systemctl', 'list-units', '--type=service', '--state=masked'], stdout=masked) #Get services in systemd style
             syslog = open("syslog.log", "w")
             subprocess.call(['journalctl', '--no-pager'], stdout=syslog) #Get all journal logs in systemd style
         elif init == 'sysvinit':
