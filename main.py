@@ -58,6 +58,7 @@ if 1 <= args.Run_OP <= 3: #Check if run option is out of 1-3 range
                             s.writelines(str(pathentry)+"\n")
                         else:
                             print(le.strip()," is not valid path")
+        # Get bash history
         
         if init == 'systemd': #check if init system is systemd
             srvs_enabled = open("srvs.lst.enabled", "w")
@@ -87,26 +88,30 @@ if 1 <= args.Run_OP <= 3: #Check if run option is out of 1-3 range
         #check if var file is in current directory
         if (Path.cwd()/'var').exists() == True:
             #if "syslog.log" and "srvs.st" : (both should exist)
-            if (Path.cwd()/"SourcePath.txt").exists() == True and (Path.cwd()/"syslog.log").exists() == True and (Path.cwd()/"srvs.lst").exists() == True
-            #var is exist
-                files = [ f for f in os.listdir('./var/') if os.path.is.dir(f)] #get file name
-                matchtype = r"^.log$"
-                os.makedirs('./service-list')
-                os.makedirs('./syslog/')
-                #check init: if sysvinit
-                if init == 'systemd':
-                    #two different mapping
-                    #systemd style
-                elif init == 'sysvinit':
-                    #sysvinit
+            if (Path.cwd()/"SourcePath.txt").exists() == True and (Path.cwd()/"syslog.log").exists() == True and (Path.cwd()/"srvs.lst").exists() == True :
+                #var is exist
+                with open("CaughtLogs.txt", "a") as c:
+                    files = [ f for f in os.listdir('./var/') if os.path.is.dir(f)] #get file name
+                    matchtype = r"^.log$"
+                    os.makedirs('./service-list')
+                    os.makedirs('./syslog/')
+                    #check init: if sysvinit
+                    if init == 'systemd':
+                        #two different mapping
+                        #systemd style
+                    elif init == 'sysvinit':
+                        #sysvinit
 
-                os.makedirs('./auth')
-                for i in range(len(files)): #Check Presence file?
-                    if re.match(r'.*\.log$', files[i]):
-                        #match auth?
-                    #match name from srvs and record?
+                    for i in range(len(files)): #Check Presence file?
+                        if re.match(r'.*\.log$', files[i]):
+                            #match auth?
+                            c.writelines(str(i)+"\n")
+                        else:
+                            #call back error for mismatched/corrupted log?
+                            
+                        #match name from srvs and record?
 
-                # regular expression to identify via file name
+                    # regular expression to identify via file name
         else:
             #not exist
             print('var directory does not exist in the current directory', Path.cwd())
