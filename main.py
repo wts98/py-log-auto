@@ -9,6 +9,15 @@ import re #regex
 import sys
 import magic #magic attr
 import glob #file only unix matching
+def copytree(src, dst, symlinks=False, ignore=None): #monkeypatching shutil.copytree, will return an error upon use
+    for item in os.listdir(src):
+        s = os.path.join(src, item)
+        d = os.path.join(dst, item)
+        if os.path.isdir(s):
+            shutil.copytree(s, d, symlinks, ignore)
+        else:
+            shutil.copy2(s, d)
+
 verbose=0
 # Parser init
 parser = argparse.ArgumentParser(prog='Linux Log Forensic Automation', description='Optional app description')
@@ -29,7 +38,7 @@ if 1 <= args.Run_OP <= 3: #Check if run option is out of 1-3 range
         # func(Log Gathering)
         ### Log Check ? ###
         # Read line from file
-        with open("SourcePath.txt", "a") as s: #Funny thing that list all the copied logs as another, you gussed it, Log/Record!
+        with open("SourcePath.txt", "a") as sp: #Funny thing that list all the copied logs as another, you gussed it, Log/Record!
             if args.ptl is None:
                 #Read default route (/var/log/*/*.log)
                 st_pt = Path('/var/log/') # starting poing
@@ -40,7 +49,7 @@ if 1 <= args.Run_OP <= 3: #Check if run option is out of 1-3 range
                     encoding = m.buffer(check)
                     if ((encoding == 'utf-8') or  (encoding == 'us-ascii')): #if matched either, the file is valid and readable
                         shutil.copy2(pathentry.strip(), destination)
-                        s.writelines(str(pathentry)+"\n")
+                        sp.writelines(str(pathentry)+"\n")
             else:
                 if not os.path.exists(args.ptl):
                     print(args.ptl," is not valid")
@@ -80,6 +89,23 @@ if 1 <= args.Run_OP <= 3: #Check if run option is out of 1-3 range
             print(init, " is not supported by this program for now!!")
 
         shutil.copy2('/etc/os-release', destination)
+
+        # Obtain command history PEr user.
+        maindir = Path('/userlist')
+        maindir.mkdir(exist_ok=True)
+        histptn = r'^\.[A-Za-z0-9_-]+_history$' #Match all history file format
+        users= [entry.name for entry in Path('/home').iterdir() if entry.is_dir()]
+        for d in users:
+            dirpath = Path('/home') / d
+            files = [entry.name for entry in dirpath.iterdir() if entry.is_file()]
+            usrdir = maindir / d
+            usrdir.mkdir(exist_ok=True)
+            user_dst= Path.cwd() / 'userlist'
+            for fn in files:
+                match = re.match(histptn, fn)
+                if match:
+                    hist_file_path = dirpath / fn
+                    shutil.copy2(hist_file_path, user_dst) #be reminded that all history file are HIDDEN.
         
 #To do: loop all path in for loop with same args
 #### Log Check END ###
@@ -99,8 +125,9 @@ if 1 <= args.Run_OP <= 3: #Check if run option is out of 1-3 range
                     if init == 'systemd':
                         #two different mapping
                         #systemd style
-                    elif init == 'sysvinit':
+                    elif init == 'sysvinit'
                         #sysvinit
+                                
 
                     for i in range(len(files)): #Check Presence file?
                         if re.match(r'.*\.log$', files[i]):
