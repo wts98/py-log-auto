@@ -1,6 +1,6 @@
 #!/usr/bin/python3
-import os #system + shell + path
-import subprocess #subshell, dangerous
+import os #system + shell + path , dangerous 
+import subprocess #subshell, dangerous too
 import argparse #input
 from pathlib import Path
 import shutil #secure copy
@@ -27,7 +27,7 @@ def print_matched_lines(regex, text): #custom regex function to print matched li
             print(f"Line {i}: {line}")
             for match in matches:
                 print(f" - Match: {match}")
-
+users= [entry.name for entry in Path('/home').iterdir() if entry.is_dir()]
 
 verbose=0
 # Parser init
@@ -79,8 +79,6 @@ if 1 <= args.Run_OP <= 3: #Check if run option is out of 1-3 range
                         else:
                             print(le.strip()," is not valid path")
         # Get bash history
-        with open('/proc/sys/kernel/pidmax', 'r') as MaxPIDfile:
-            MaxPID = MaxPIDfile.read().rstrip() #Get Max PID value of the host system
         if init == 'systemd': #check if init system is systemd
             srvs_enabled = open("srvs.lst.enabled", "w")
             subprocess.call(['systemctl', 'list-unit-files', '--type=service', '--state=enabled'], stdout=srvs_enabled) #Get services in systemd style
@@ -95,7 +93,7 @@ if 1 <= args.Run_OP <= 3: #Check if run option is out of 1-3 range
             subprocess.call(['sed','-i' , '1d;$d', 'srvs.list.static',])
             srvs_static.close()
             syslog = open("syslog", "w")
-            subprocess.call(['journalctl', '--no-pager'], stdout=syslog) #Get all journal logs in systemd style 
+            subprocess.call(['journalctl', '--no-pager'], stdout=syslog) #Get all journal logs in systemd style #default is compatible with other regex
             syslog.close()
         elif init == 'sysvinit':
             srvs = open("srvs.lst", "w")
@@ -112,7 +110,7 @@ if 1 <= args.Run_OP <= 3: #Check if run option is out of 1-3 range
         maindir = Path('/userlist')
         maindir.mkdir(exist_ok=True)
         histptn = r'^\.[A-Za-z0-9_-]+_history$' #Match all history file format
-        users= [entry.name for entry in Path('/home').iterdir() if entry.is_dir()]
+        #users= [entry.name for entry in Path('/home').iterdir() if entry.is_dir()]
         for d in users:
             dirpath = Path('/home') / d
             files = [entry.name for entry in dirpath.iterdir() if entry.is_file()]
@@ -192,7 +190,9 @@ if 1 <= args.Run_OP <= 3: #Check if run option is out of 1-3 range
                         text=file.read()
                     print_matched_lines(regex, text)
                     ##below are for auth.log
-                    regex=r"\w\w\w\s\d+\s\d{2}:\d{2}:\d{2}\s"gm #for date    
+                    with open('/etc/hostname', 'r') as hostnamefile:
+                        hostname= hostnamefile.read().rstrip()
+                    regex=r"\w\w\w\s\d+\s\d{2}:\d{2}:\d{2}\s" + re.escape(hostname) + r"\s(sudo|login)\:\ssession\sopened\sopened\sfor\suser\sroot\sby"gm#for date and session    
                     #{Mon} {D} {HH:MM:SS} <hostname> <cmd/util like sudo,login etc>: pam_unix(cmd:session): session opened for user root by <username> (uid=0)
                     #{Mon} {D} {HH:MM:SS} <hostname> sudo: pam_unix(sudo:session): session opened for user root by <username> (uid=0)
                     #{Mon} {D} {HH:MM:SS} <hostname> login[pid]: pam_unix(login:session): session opened for user root by <username> (uid=0)
@@ -204,8 +204,9 @@ if 1 <= args.Run_OP <= 3: #Check if run option is out of 1-3 range
                     #{Mon} {D} {HH:MM:SS} <hostname> init: tty<#> main process (#pid) killed by <type of> signal
                     ##below are for vsftpd.log
                     #{WEK} {MON} {D} {HH:MM:SS} {YYYY} [pid ####] CONNECT: Client "<ipv4 ip>"
-                    #{WEK} {MON} {D} {HH:MM:SS} {YYYY} [pid ####] [<username>] OK LOGIN: Client "<ipv4 ip>"
+                    #{WEK} {MON} {D} {HH:MM:SS} {YYYY} [pid ####] [<username>] OK LOGIN: Client "<ipv4 ip>
 
+                    #<username> : TTY=pts/# ; PWD=/path/to/cmd-entry ; USER=root ; COMMAND=/path/to/cmd/binary + arguments
 
         else:
             print('Missing Log verification and gathering!')
