@@ -143,7 +143,7 @@ if 1 <= args.Run_OP <= 3: #Check if run option is out of 1-3 range
                             logging.debug('Systemd JournalLog is found')
                         else:
                             logging.debug('Systemd JournalLog is not found')
-                            if (Path.cwd()/"").exist is == True:
+                            if (Path.cwd()/"").exists == True:
                                 logging.debug('')
                         #two different mapping
                         #systemd style
@@ -157,20 +157,21 @@ if 1 <= args.Run_OP <= 3: #Check if run option is out of 1-3 range
                             else:
                                 logging.debug('auth.log is not found')
                         #sysvinit
-                                
+                    else:
+                        print("init system not supported.")         
 
                     for i in range(len(files)): #Check Presence file? in /var/log?
                         if re.match(r'.*\.log$', files[i]):
                             #match auth?
                             c.writelines(str(i)+"\n")
-                        else:
+                        #else:
                             #call back error for mismatched/corrupted log?
                             
                         #match name from srvs and record?
 
                     # regular expression to identify via file name
-        else:
             #not exist
+        else:
             print('var directory does not exist in the current directory', Path.cwd())
     # func(Log Classification)
     elif args.Run_OP == 3:
@@ -185,14 +186,14 @@ if 1 <= args.Run_OP <= 3: #Check if run option is out of 1-3 range
                 else:
                     # R E G E X T I M E // re.match from file
                     #VV the following function should able to be reused per each function? But will need to implement how to organize the output as well.
-                    regex=r"ROOT"gm #regex string e.g. root, whatever protocol it might be #root global matching
+                    #regex string e.g. root, whatever protocol it might be #root global matching
                     with open(le, 'r') as file:
                         text=file.read()
                     print_matched_lines(regex, text)
                     ##below are for auth.log
                     with open('/etc/hostname', 'r') as hostnamefile:
                         hostname= hostnamefile.read().rstrip()
-                    regex=r"\w\w\w\s\d+\s\d{2}:\d{2}:\d{2}\s" + re.escape(hostname) + r"\s(sudo|login)\:\ssession\sopened\sopened\sfor\suser\sroot\sby"gm#for date and session    
+                    regex=r"\w\w\w\s\d+\s\d{2}:\d{2}:\d{2}\s" + re.escape(hostname) + r"\s(sudo|login)\:\ssession\sopened\sopened\sfor\suser\sroot\sby$"#for date and session    
                     #{Mon} {D} {HH:MM:SS} <hostname> <cmd/util like sudo,login etc>: pam_unix(cmd:session): session opened for user root by <username> (uid=0)
                     #{Mon} {D} {HH:MM:SS} <hostname> sudo: pam_unix(sudo:session): session opened for user root by <username> (uid=0)
                     #{Mon} {D} {HH:MM:SS} <hostname> login[pid]: pam_unix(login:session): session opened for user root by <username> (uid=0)
