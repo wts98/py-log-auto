@@ -133,7 +133,7 @@ if 1 <= args.Run_OP <= 3: #Check if run option is out of 1-3 range
             if (Path.cwd()/"SourcePath.txt").exists() == True and (Path.cwd()/"syslog").exists() == True and (Path.cwd()/"srvs.lst").exists() == True :
                 #var is exist
                 with open("CaughtLogs.txt", "a") as c:
-                    files = [ f for f in os.listdir('./var/') if os.path.is.dir(f)] #get file name
+                    files = [ f for f in os.listdir('./var/') if os.path.isdir(f)] #get file name
                     matchtype = r"^.log$"
                     #os.makedirs('./service-list')
                     #os.makedirs('./syslog/')
