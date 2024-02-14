@@ -182,11 +182,11 @@ if 1 <= args.Run_OP <= 3: #Check if run option is out of 1-3 range
             legituser=[]
             with open('/etc/passwd', 'r') as file:
                 for line in file.readlines():
-                    if "nologin" in line:
+                    if "nologin" in line: #/bin/nologin
                         noneuser.append(line.split(':')[0])
                     elif "false" in line: #/bin/false
                         noneuser.append(line.split(':')[0])
-                    else:
+                    else: #/bin/{any kinds of interactive or non-interactive shell}
                         legituser.append(line.split(':')[0])
             #statement
             file = open('CaughtLogs.txt', 'r') #Start of Custom Path
