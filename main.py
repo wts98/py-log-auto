@@ -177,6 +177,17 @@ if 1 <= args.Run_OP <= 3: #Check if run option is out of 1-3 range
     elif args.Run_OP == 3:
         print("Running Log Summarization")
         if (Path.cwd()/'CaughtLogs.txt').exist() == True:
+            #collect none-users/disabled accounts which might be used for remote application shell exploitation
+            noneuser=[]
+            legituser=[]
+            with open('/etc/passwd', 'r') as file:
+                for line in file.readlines():
+                    if "nologin" in line:
+                        noneuser.append(line.split(':')[0])
+                    elif "false" in line: #/bin/false
+                        noneuser.append(line.split(':')[0])
+                    else:
+                        legituser.append(line.split(':')[0])
             #statement
             file = open('CaughtLogs.txt', 'r') #Start of Custom Path
             filelines = file.readlines()
