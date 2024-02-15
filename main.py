@@ -10,6 +10,19 @@ import glob #file only unix matching
 import logging
 import time
 from pwd import getpwuid
+def fsstat(le):
+    #Check if log itself has been tampered with!!
+    npath= Path(le)
+    #cts=time.ctime(npath.stat().st_ctime) // tampered by copytree()j
+    mts=time.ctime(npath.stat().st_mtime)
+    ats=time.ctime(npath.stat().st_atime)
+    ctr=npath.stat().st_creator
+    cuser=getpwuid(npath.stat().st_uid).pwname
+    #print('Created time ', cts)
+    print('Modified time: ', mts)
+    print('Last Access time: ', ats)
+    print('Owner of the file: ', cuser)
+
 def copytree(src, dst, symlinks = False, ignore = None):
   if not os.path.exists(dst):
     os.makedirs(dst)
@@ -77,6 +90,7 @@ if 1 <= args.Run_OP <= 3: #Check if run option is out of 1-3 range
                     encoding = m.buffer(check)
                     if ((encoding == 'utf-8') or  (encoding == 'us-ascii')): #if matched either, the file is valid and readable
                         shutil.copy2(pathentry.strip(), destination)
+                        fsstat(le)
                         sp.writelines(str(pathentry)+"\n")
             else:
                 if not os.path.exists(args.ptl):
@@ -92,6 +106,8 @@ if 1 <= args.Run_OP <= 3: #Check if run option is out of 1-3 range
                         encoding = m.buffer(check)
                         if ((encoding == 'utf-8') or  (encoding == 'us-ascii')): #if matched either, file is valid and readable // Should I do functional programming instead?
                             shutil.copy2(le.strip(), destination) #secure copy to current dir
+                            #Check if log itself has been tampered with!!
+                            fsstat(le)
                             s.writelines(str(pathentry)+"\n")
                         else:
                             print(le.strip()," is not valid path")
@@ -181,17 +197,7 @@ if 1 <= args.Run_OP <= 3: #Check if run option is out of 1-3 range
                         if re.match(r'.*\.log$', files[i]):
                             #match auth?
                             c.writelines(str(i)+"\n")
-                            #Check if log itself has been tampered with!!
-                            npath= Path(le)
-                            #cts=time.ctime(npath.stat().st_ctime) // tampered by copytree()j
-                            mts=time.ctime(npath.stat().st_mtime)
-                            ats=time.ctime(npath.stat().st_atime)
-                            ctr=npath.stat().st_creator
-                            cuser=getpwuid(npath.stat().st_uid).pwname
-                            #print('Created time ', cts)
-                            print('Modified time: ', mts)
-                            print('Last Access time: ', ats)
-                            print('Owner of the file: ', cuser)
+
                         #else:
                             #call back error for mismatched/corrupted log?
                             
