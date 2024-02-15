@@ -4,20 +4,37 @@ import subprocess #subshell, dangerous too
 import argparse #input
 from pathlib import Path
 import shutil #secure copy
-#import platform
 import re #regex
-import sys
 import magic #magic attr
 import glob #file only unix matching
 import logging
-def copytree(src, dst, symlinks=False, ignore=None): #monkeypatching shutil.copytree, will return an error upon use
-    for item in os.listdir(src):
-        s = os.path.join(src, item)
-        d = os.path.join(dst, item)
-        if os.path.isdir(s):
-            shutil.copytree(s, d, symlinks, ignore)
-        else:
-            shutil.copy2(s, d)
+import time
+from pwd import getpwuid
+def copytree(src, dst, symlinks = False, ignore = None):
+  if not os.path.exists(dst):
+    os.makedirs(dst)
+    shutil.copystat(src, dst)
+  lst = os.listdir(src)
+  if ignore:
+    excl = ignore(src, lst)
+    lst = [x for x in lst if x not in excl]
+  for item in lst:
+    s = os.path.join(src, item)
+    d = os.path.join(dst, item)
+    if symlinks and os.path.islink(s):
+      if os.path.lexists(d):
+        os.remove(d)
+      os.symlink(os.readlink(s), d)
+      try:
+        st = os.lstat(s)
+        mode = stat.S_IMODE(st.st_mode)
+        os.lchmod(d, mode)
+      except:
+        pass # lchmod not available
+    elif os.path.isdir(s):
+      copytree(s, d, symlinks, ignore)
+    else:
+      shutil.copy2(s, d)
 
 def print_matched_lines(regex, text): #custom regex function to print matched line by line
     lines = text.split('\n')
@@ -164,6 +181,17 @@ if 1 <= args.Run_OP <= 3: #Check if run option is out of 1-3 range
                         if re.match(r'.*\.log$', files[i]):
                             #match auth?
                             c.writelines(str(i)+"\n")
+                            #Check if log itself has been tampered with!!
+                            npath= Path(le)
+                            #cts=time.ctime(npath.stat().st_ctime) // tampered by copytree()j
+                            mts=time.ctime(npath.stat().st_mtime)
+                            ats=time.ctime(npath.stat().st_atime)
+                            ctr=npath.stat().st_creator
+                            cuser=getpwuid(npath.stat().st_uid).pwname
+                            #print('Created time ', cts)
+                            print('Modified time: ', mts)
+                            print('Last Access time: ', ats)
+                            print('Owner of the file: ', cuser)
                         #else:
                             #call back error for mismatched/corrupted log?
                             
@@ -182,15 +210,17 @@ if 1 <= args.Run_OP <= 3: #Check if run option is out of 1-3 range
             legituser=[]
             with open('/etc/passwd', 'r') as file:
                 for line in file.readlines():
-                    if "nologin" in line: #/bin/nologin
+                    if "nologin" in line: #\\ /bin/nologin
                         noneuser.append(line.split(':')[0])
-                    elif "false" in line: #/bin/false
+                    elif "false" in line: #\\ /bin/false
                         noneuser.append(line.split(':')[0])
-                    else: #/bin/{any kinds of interactive or non-interactive shell}
+                    else: #\\ /bin/{any kinds of interactive or non-interactive shell}
                         legituser.append(line.split(':')[0])
+                        # creating 3 list of users which identify
             #statement
             file = open('CaughtLogs.txt', 'r') #Start of Custom Path
             filelines = file.readlines()
+        
             for le in file:
                 if not os.path.exists(le):
                     print(le, " is not found within the previous log collection")
@@ -198,14 +228,16 @@ if 1 <= args.Run_OP <= 3: #Check if run option is out of 1-3 range
                     # R E G E X T I M E // re.match from file
                     #VV the following function should able to be reused per each function? But will need to implement how to organize the output as well.
                     #regex string e.g. root, whatever protocol it might be #root global matching
+                    
                     with open(le, 'r') as file:
                         text=file.read()
                     print_matched_lines(regex, text)
                     ##below are for auth.log
                     with open('/etc/hostname', 'r') as hostnamefile:
                         hostname= hostnamefile.read().rstrip()
-                    regex=r"\w\w\w\s\d+\s\d{2}:\d{2}:\d{2}\s" + re.escape(hostname) + r"\s(sudo|login)\:\ssession\sopened\sopened\sfor\suser\sroot\sby$"#for date and session    
+                    nonuserprivesc=r"\w\w\w\s\d+\s\d{2}:\d{2}:\d{2}\s" + re.escape(hostname) + r"\s(sudo|login)\:\ssession\sopened\sopened\sfor\suser\sroot\sby$" + re.escape(noneuser[i])    
                     #{Mon} {D} {HH:MM:SS} <hostname> <cmd/util like sudo,login etc>: pam_unix(cmd:session): session opened for user root by <username> (uid=0)
+                    useractivity=r"\w\w\w\s\d+\s\d{2}:\d{2}:\d{2}\s" + re.escape(hostname) + r"\s(sudo|login)\:\ssession\sopened\sopened\sfor\suser\sroot\sby$" + re.escape(legituser[i])
                     #{Mon} {D} {HH:MM:SS} <hostname> sudo: pam_unix(sudo:session): session opened for user root by <username> (uid=0)
                     #{Mon} {D} {HH:MM:SS} <hostname> login[pid]: pam_unix(login:session): session opened for user root by <username> (uid=0)
                     #{Mon} {D} {HH:MM:SS} <hostname> login[pid]: pam_unix(login:auth): authentication failure, logname=<service name like postgres uid=<#> euid=<#> tty=tty1 ruser= rhost= user=<username>
