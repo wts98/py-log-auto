@@ -187,20 +187,17 @@ if 1 <= args.Run_OP <= 3: #Check if run option is out of 1-3 range
                             logging.debug('Systemd JournalLog is not found')
                             if (Path.cwd()/"").exists == True:
                                 logging.debug('')
-                        #two different mapping
-                        #systemd style
-                    elif init == 'sysvinit':
-                        if (Path.cwd()/"syslog").exists == True:
-                            logging.debug('syslog is found')
-                        else:
-                            logging.debug('syslog is not fonud')
-                            if (Path.cwd()/"auth.log"):
-                                logging.debug('auth.log is found')
-                            else:
-                                logging.debug('auth.log is not found')
-                        #sysvinit
+                        #systemd specific logs
+                    
+                    if (Path.cwd()/"syslog").exists == True:
+                        logging.debug('syslog is found')
                     else:
-                        print("init system not supported.")         
+                        logging.debug('syslog is not fonud')
+                        if (Path.cwd()/"auth.log"):
+                            logging.debug('auth.log is found')
+                        else:
+                            logging.debug('auth.log is not found')
+       
 
                     for i in range(len(files)): #Check Presence file? in /var/log?
                         if re.match(r'.*\.log$', files[i]):
