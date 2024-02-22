@@ -97,7 +97,7 @@ if 1 >= args.Run_OP <= 4: #Check if run option is out of 1-3 range
                             parent_dirs = list(pathentry.parents)
                             parent_dirs.reverse()  # Reverse the list to get from top-most parent to immediate parent
                             filename = f"{parent_dirs[0].name}_{pathentry.name}"
-                            if parent_dir.name != 'log':
+                            if parent_dirs[0].name != 'log':
                                 shutil.copy2(pathentry, destination/parent_dir[0]/ filename)
                             else:
                                 shutil.copy2(pathentry, destination)
