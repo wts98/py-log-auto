@@ -82,17 +82,18 @@ if 1 <= args.Run_OP <= 3: #Check if run option is out of 1-3 range
                 #Read default route (/var/log/*/*.log)
                 st_pt = Path('/var/log/') # starting poing
                 fileattr = open("fileattr.csv", "w")
-                for pathentry in st_pt.iterdir():
-                    check = open(pathentry.strip(), 'rb').read() #check all text encoding of file
-                    m = magic.open(magic.MAGIC_MIME_ENCODING)
-                    m.load(), stdout=srvs
-                    encoding = m.buffer(check)
-                    if ((encoding == 'utf-8') or  (encoding == 'us-ascii')): #if matched either, the file is valid and readable
-                        shutil.copy2(pathentry.strip(), destination)
-                        fsstat(le)
-                        sp.writelines(str(pathentry)+"\n")
-                    else:
-                        print("File", pathentry, "is invalid")
+                for pathentry in st_pt.glob('**/*'):
+                    if pathentry.is_file():
+                        check = open(pathentry, 'rb').read() #check all text encoding of file
+                        m = magic.open(magic.MAGIC_MIME_ENCODING)
+                        m.load()
+                        encoding = m.buffer(check)
+                        if ((encoding == 'utf-8') or  (encoding == 'us-ascii')): #if matched either, the file is valid and readable
+                            shutil.copy2(pathentry.strip(), destination)
+                            fsstat(le)
+                            sp.writelines(str(pathentry)+"\n")
+                        else:
+                            print("File", pathentry, "is invalid")
             else:
                 if not os.path.exists(args.ptl):
                     print(args.ptl," is not valid")
@@ -110,7 +111,7 @@ if 1 <= args.Run_OP <= 3: #Check if run option is out of 1-3 range
                             shutil.copy2(le.strip(), destination) #secure copy to current dir
                             #Check if log itself has been tampered with!!
                             fsstat(le)
-                            s.writelines(str(pathentry)+"\n")
+                            sp.writelines(str(pathentry)+"\n")
                         else:
                             print(le.strip()," is not valid path")
         # Get bash history
