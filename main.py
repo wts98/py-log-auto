@@ -92,9 +92,16 @@ if 1 <= args.Run_OP <= 3: #Check if run option is out of 1-3 range
                         m.load()
                         encoding = m.buffer(check)
                         if ((encoding == 'utf-8') or  (encoding == 'us-ascii')): #if matched either, the file is valid and readable
-                            shutil.copy2(pathentry, destination)
-                            fsstat(pathentry)
                             
+                            parent_dirs = list(pathentry.parents)
+                            parent_dirs.reverse()  # Reverse the list to get from top-most parent to immediate parent
+                            filename = f"{parent_dirs[0].name}_{pathentry.name}"
+                            if parent_dir.name != 'log':
+                                shutil.copy2(pathentry, destination/parent_dir[0]/ filename)
+                            else:
+                                shutil.copy2(pathentry, destination)
+                            #shutil.copytree(pathentry, destination)
+                            fsstat(pathentry)
                             sp.writelines(str(pathentry)+"\n")
                         else:
                             print("File", pathentry, "is invalid")
@@ -106,7 +113,7 @@ if 1 <= args.Run_OP <= 3: #Check if run option is out of 1-3 range
                     print(args.ptl," is the given custom path to list of logs.")
                     filelines = file.readlines()
                     fileattr = open("fileattr.csv", "w")
-                    for le in file:
+                    for le in filelines:
                         check = open(le.strip(), 'rb').read() #check all text encoding of file
                         m = magic.open(magic.MAGIC_MIME_ENCODING)
                         m.load()
@@ -114,8 +121,7 @@ if 1 <= args.Run_OP <= 3: #Check if run option is out of 1-3 range
                         if ((encoding == 'utf-8') or  (encoding == 'us-ascii')): #if matched either, file is valid and readable // Should I do functional programming instead?
                             shutil.copy2(le.strip(), destination) #secure copy to current dir
                             #Check if log itself has been tampered with!!
-                            fsstat(le)
-                            fileattr.writeline(str(pathentry)+","+ str(mts) + "," + str(ats) + "," + str(cuser) +"\n")
+                            fsstat(pathentry)
                             sp.writelines(str(pathentry)+"\n")
                         else:
                             print(le.strip()," is not valid path")
@@ -180,9 +186,13 @@ if 1 <= args.Run_OP <= 3: #Check if run option is out of 1-3 range
                     #os.makedirs('./service-list')
                     #os.makedirs('./syslog/')
                     #check init: if sysvinit
+                    syslogdir=Path.cwd()/"syslog"
+                    syslogdir.mkdir
                     if init == 'systemd':
                         if (Path.cwd()/"syslog.log").exist == True:
                             logging.debug('Systemd JournalLog is found')
+                            msrc=Path.cwd()/"syslog.log"
+                            shutil.move(msrc, syslogdir)
                         else:
                             logging.debug('Systemd JournalLog is not found')
                             if (Path.cwd()/"").exists == True:
@@ -191,12 +201,18 @@ if 1 <= args.Run_OP <= 3: #Check if run option is out of 1-3 range
                     
                     if (Path.cwd()/"syslog").exists == True:
                         logging.debug('syslog is found')
+                        msrc=Path.cwd()/"syslog"
+                        shutil.move(msrc, syslogdir)
                     else:
                         logging.debug('syslog is not fonud')
-                        if (Path.cwd()/"auth.log"):
-                            logging.debug('auth.log is found')
-                        else:
-                            logging.debug('auth.log is not found')
+                    if (Path.cwd()/"auth.log"):
+                        logging.debug('auth.log is found')
+                        authlog = Path.cwd()/"auth"
+                        authlog.mkdir()
+                        msrc=Path.cwd()/"auth.log"
+                        shutil.move(msrc, authlog)
+                    else:
+                        logging.debug('auth.log is not found')
        
 
                     for i in range(len(files)): #Check Presence file? in /var/log?
@@ -233,13 +249,13 @@ if 1 <= args.Run_OP <= 3: #Check if run option is out of 1-3 range
             file = open('CaughtLogs.txt', 'r') #Start of Custom Path
             filelines = file.readlines()
         
-            for le in file:
+            for le in filelines:
                 if not os.path.exists(le):
                     print(le, " is not found within the previous log collection")
                 else:
                     # R E G E X T I M E // re.match from file
                     #VV the following function should able to be reused per each function? But will need to implement how to organize the output as well.
-                    #regex string e.g. root, whatever protocol it might be #root global matching
+                    #regex string e.g. root, whatever protocol Wit might be #root global matching
                     
                     with open(le, 'r') as file:
                         text=file.read()
