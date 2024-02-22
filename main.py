@@ -147,7 +147,7 @@ if 1 <= args.Run_OP <= 3: #Check if run option is out of 1-3 range
         shutil.copy2('/etc/os-release', destination)
 
         # Obtain command history Per user.
-        maindir = Path('/userlist')
+        maindir = Path.cwd/"userlist"
         maindir.mkdir(exist_ok=True)
         histptn = r'^\.[A-Za-z0-9_-]+_history$' #Match all history file format
         #users= [entry.name for entry in Path('/home').iterdir() if entry.is_dir()]
@@ -156,13 +156,13 @@ if 1 <= args.Run_OP <= 3: #Check if run option is out of 1-3 range
             files = [entry.name for entry in dirpath.iterdir() if entry.is_file()]
             usrdir = maindir / d
             usrdir.mkdir(exist_ok=True)
-            user_dst= Path.cwd() / 'userlist'
+            #user_dst= Path.cwd() / 'userlist'
             for fn in files:
                 match = re.match(histptn, fn)
                 if match:
                     hist_file_path = dirpath / fn
                     fsstat(hist_file_path)
-                    shutil.copy2(hist_file_path, user_dst) #be reminded that all history file are HIDDEN.
+                    shutil.copy2(hist_file_path, usrdir) #be reminded that all history file are HIDDEN.
                     
         
 #To do: loop all path in for loop with same args
