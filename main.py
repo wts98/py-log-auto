@@ -19,6 +19,7 @@ def fsstat(le):
     #ctr=npath.stat().st_creator
     cuser=getpwuid(npath.stat().st_uid).pw_name
     #print('Created time ', cts)
+    fileattr.writelines(str(pathentry)+","+ str(mts) + "," + str(ats) + "," + str(cuser) +"\n")
     
 
 def copytree(src, dst, symlinks = False, ignore = None):
@@ -91,7 +92,7 @@ if 1 <= args.Run_OP <= 3: #Check if run option is out of 1-3 range
                         if ((encoding == 'utf-8') or  (encoding == 'us-ascii')): #if matched either, the file is valid and readable
                             shutil.copy2(pathentry, destination)
                             fsstat(pathentry)
-                            fileattr.writeline(str(pathentry)+","+ str(mts) + "," + str(ats) + "," + str(cuser) +"\n")
+                            
                             sp.writelines(str(pathentry)+"\n")
                         else:
                             print("File", pathentry, "is invalid")
