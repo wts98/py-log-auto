@@ -93,14 +93,14 @@ if 1 >= args.Run_OP <= 4: #Check if run option is out of 1-3 range
                         m.load()
                         encoding = m.buffer(check)
                         if ((encoding == 'utf-8') or  (encoding == 'us-ascii')): #if matched either, the file is valid and readable
-                            
-                            parent_dirs = list(pathentry.parents)
-                            parent_dirs.reverse()  # Reverse the list to get from top-most parent to immediate parent
-                            filename = f"{parent_dirs[0].name}_{pathentry.name}"
-                            if parent_dirs[0].name != 'log':
-                                shutil.copy2(pathentry, destination/parent_dirs[0]/ filename)
-                            else:
-                                shutil.copy2(pathentry, destination)
+                            shutil.copy2(pathentry, destination)
+                            #parent_dirs = list(pathentry.parents)
+                            #parent_dirs.reverse()  # Reverse the list to get from top-most parent to immediate parent
+                            #filename = f"{parent_dirs[0].name}_{pathentry.name}"
+                            #if parent_dirs[0].name != 'log':
+                            #    shutil.copy2(pathentry, destination/parent_dirs[0]/ filename)
+                            #else:
+                            #    shutil.copy2(pathentry, destination)
                             #shutil.copytree(pathentry, destination)
                             fsstat(pathentry)
                             sp.writelines(str(pathentry)+"\n")
