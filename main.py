@@ -288,7 +288,7 @@ if 1 >= args.Run_OP <= 4: #Check if run option is out of 1-3 range
     else:
         print(le ," is Invalid Option!!!")
 else:
-    print(le ," is Invalid Option!!!")
+    print(arg.Run_OP ," is Invalid Option!!!")
 
 #verbose=args.vb #extract verbose option
 #print(verbose) #PoC
