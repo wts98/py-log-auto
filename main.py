@@ -69,7 +69,7 @@ parser.add_argument('-c', '--path', type=str, nargs='?', help='custom path to lo
 args = parser.parse_args()
 print(args.Run_OP, " is the running option I think")
 
-if 1 <= args.Run_OP <= 3: #Check if run option is out of 1-3 range
+if 1 >= args.Run_OP <= 4: #Check if run option is out of 1-3 range
     initso= subprocess.Popen(['ps', '-p', '1', '-o' 'comm='], stdout=subprocess.PIPE) # Get name of 1st ps (i.e. the name of the init system)
     init = initso.stdout.read()
     if args.Run_OP == 1:
@@ -287,6 +287,8 @@ if 1 <= args.Run_OP <= 3: #Check if run option is out of 1-3 range
     # func(Log Summarization)
     else:
         print(le ," is Invalid Option!!!")
+else:
+    print(le ," is Invalid Option!!!")
 
 #verbose=args.vb #extract verbose option
 #print(verbose) #PoC
