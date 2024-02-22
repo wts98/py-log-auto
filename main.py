@@ -19,7 +19,7 @@ def fsstat(le):
     #ctr=npath.stat().st_creator
     cuser=getpwuid(npath.stat().st_uid).pw_name
     #print('Created time ', cts)
-    fileattr.writelines(str(pathentry)+","+ str(mts) + "," + str(ats) + "," + str(cuser) +"\n")
+    fileattr.writelines("File Original Path: "+str(pathentry)+","+"Modified Time:"+ str(mts) + "," + str(ats) + "," + str(cuser) +"\n")
     
 
 def copytree(src, dst, symlinks = False, ignore = None):
@@ -74,7 +74,9 @@ if 1 <= args.Run_OP <= 3: #Check if run option is out of 1-3 range
     init = initso.stdout.read()
     if args.Run_OP == 1:
         print("Log Gathering Will be carried out") 
-        destination = Path.cwd()
+        Path(Path.cwd/'Logs').mkdir(parents=True, exist_ok=True)
+        destination = Path.cwd()/"Logs"
+        destination.mkdir()
         # func(Log Gathering)
         ### Log Check ? ###
         # Read line from file
@@ -139,9 +141,9 @@ if 1 <= args.Run_OP <= 3: #Check if run option is out of 1-3 range
         srvs = open("srvs.lst", "w")
         subprocess.call([ 'service', '--status-all'], stdout=srvs) #Get all service in Sysvinit style
         subprocess.call([ 'last', '-f', 'i', 'lastlog'])
-        shutil.copy2('/etc/auth.log', destination)
+        #shutil.copy2('/var/log/auth.log', destination)
         #shutil.copy2 ##syslog copy?
-        shutil.copy2('/etc/var/log/syslog', destination)
+        #shutil.copy2('/var/log/syslog', destination)
         shutil.copy2('/etc/os-release', destination)
 
         # Obtain command history Per user.
@@ -168,12 +170,12 @@ if 1 <= args.Run_OP <= 3: #Check if run option is out of 1-3 range
     elif args.Run_OP == 2:
         print("Running Log Classification")
         #check if var file is in current directory
-        if (Path.cwd()/'var').exists() == True:
+        if (Path.cwd()/'Logs').exists() == True:
             #if "syslog.log" and "srvs.st" : (both should exist)
             if (Path.cwd()/"SourcePath.txt").exists() == True and (Path.cwd()/"syslog").exists() == True and (Path.cwd()/"srvs.lst").exists() == True :
                 #var is exist
                 with open("CaughtLogs.txt", "a") as c:
-                    files = [ f for f in os.listdir('./var/') if os.path.isdir(f)] #get file name
+                    files = [ f for f in os.listdir('./Logs/') if os.path.isdir(f)] #get file name
                     matchtype = r"^.log$"
                     #os.makedirs('./service-list')
                     #os.makedirs('./syslog/')
