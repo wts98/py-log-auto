@@ -146,7 +146,7 @@ if 1 >= args.Run_OP <= 4: #Check if run option is out of 1-3 range
 
 
         srvs = open("srvs.lst", "w")
-        last= open("lastlog", "w")
+        lastfile= open("lastlog", "w")
         subprocess.call([ 'service', '--status-all'], stdout=srvs) #Get all service in Sysvinit style
         subprocess.call([ 'last', '-i'], stdout=lastfile)
         #shutil.copy2('/var/log/auth.log', destination)
