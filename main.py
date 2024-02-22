@@ -98,7 +98,7 @@ if 1 >= args.Run_OP <= 4: #Check if run option is out of 1-3 range
                             parent_dirs.reverse()  # Reverse the list to get from top-most parent to immediate parent
                             filename = f"{parent_dirs[0].name}_{pathentry.name}"
                             if parent_dirs[0].name != 'log':
-                                shutil.copy2(pathentry, destination/parent_dir[0]/ filename)
+                                shutil.copy2(pathentry, destination/parent_dirs[0]/ filename)
                             else:
                                 shutil.copy2(pathentry, destination)
                             #shutil.copytree(pathentry, destination)
@@ -154,7 +154,7 @@ if 1 >= args.Run_OP <= 4: #Check if run option is out of 1-3 range
         shutil.copy2('/etc/os-release', destination)
 
         # Obtain command history Per user.
-        maindir = Path.cwd/"userlist"
+        maindir = Path.cwd()/"userlist"
         maindir.mkdir(exist_ok=True)
         histptn = r'^\.[A-Za-z0-9_-]+_history$' #Match all history file format
         #users= [entry.name for entry in Path('/home').iterdir() if entry.is_dir()]
