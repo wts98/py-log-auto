@@ -90,7 +90,7 @@ if 1 <= args.Run_OP <= 3: #Check if run option is out of 1-3 range
                         encoding = m.buffer(check)
                         if ((encoding == 'utf-8') or  (encoding == 'us-ascii')): #if matched either, the file is valid and readable
                             shutil.copy2(pathentry, destination)
-                            fsstat(le)
+                            fsstat(pathentry)
                             fileattr.writeline(str(pathentry)+","+ str(mts) + "," + str(ats) + "," + str(cuser) +"\n")
                             sp.writelines(str(pathentry)+"\n")
                         else:
