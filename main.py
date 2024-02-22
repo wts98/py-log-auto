@@ -19,9 +19,7 @@ def fsstat(le):
     ctr=npath.stat().st_creator
     cuser=getpwuid(npath.stat().st_uid).pwname
     #print('Created time ', cts)
-    print('Modified time: ', mts)
-    print('Last Access time: ', ats)
-    print('Owner of the file: ', cuser)
+    fileattr.writeline(str(pathentry)+","+ str(mts) + "," + str(ats) + "," + str(cuser) +"\n")
 
 def copytree(src, dst, symlinks = False, ignore = None):
   if not os.path.exists(dst):
@@ -83,15 +81,18 @@ if 1 <= args.Run_OP <= 3: #Check if run option is out of 1-3 range
             if args.ptl is None:
                 #Read default route (/var/log/*/*.log)
                 st_pt = Path('/var/log/') # starting poing
+                fileattr = open("fileattr.csv", "w")
                 for pathentry in st_pt.iterdir():
                     check = open(pathentry.strip(), 'rb').read() #check all text encoding of file
                     m = magic.open(magic.MAGIC_MIME_ENCODING)
-                    m.load()
+                    m.load(), stdout=srvs
                     encoding = m.buffer(check)
                     if ((encoding == 'utf-8') or  (encoding == 'us-ascii')): #if matched either, the file is valid and readable
                         shutil.copy2(pathentry.strip(), destination)
                         fsstat(le)
                         sp.writelines(str(pathentry)+"\n")
+                    else:
+                        print("File", pathentry, "is invalid")
             else:
                 if not os.path.exists(args.ptl):
                     print(args.ptl," is not valid")
@@ -99,6 +100,7 @@ if 1 <= args.Run_OP <= 3: #Check if run option is out of 1-3 range
                     file = open(args.ptl, 'r') #Start of Custom Path
                     print(args.ptl," is the given custom path to list of logs.")
                     filelines = file.readlines()
+                    fileattr = open("fileattr.csv", "w")
                     for le in file:
                         check = open(le.strip(), 'rb').read() #check all text encoding of file
                         m = magic.open(magic.MAGIC_MIME_ENCODING)
@@ -115,7 +117,7 @@ if 1 <= args.Run_OP <= 3: #Check if run option is out of 1-3 range
         if init == 'systemd': #check if init system is systemd
             srvs_enabled = open("srvs.lst.enabled", "w")
             subprocess.call(['systemctl', 'list-unit-files', '--type=service', '--state=enabled'], stdout=srvs_enabled) #Get services in systemd style
-            subprocess.call(['sed','-i' , '1d;$d', 'srvs.list.enabled',])
+            subprocess.call(['sed','-i' , '1d;$d', 'srvs.list.enabled',]) #remove first and last line for text processing
             srvs_enabled.close()
             srvs_disabled = open("srvs.lst.disabled", "w")
             subprocess.call(['systemctl', 'list-unit-files', '--type=service', '--state=disabled'], stdout=srvs_disabled) #Get services in systemd style
@@ -128,15 +130,14 @@ if 1 <= args.Run_OP <= 3: #Check if run option is out of 1-3 range
             syslog = open("syslog", "w")
             subprocess.call(['journalctl', '--no-pager'], stdout=syslog) #Get all journal logs in systemd style #default is compatible with other regex
             syslog.close()
-        elif init == 'sysvinit':
-            srvs = open("srvs.lst", "w")
-            subprocess.call([ 'service', '--status-all'], stdout=srvs) #Get all service in Sysvinit style
-            shutil.copy2('/etc/auth.log', destination)
-            #shutil.copy2 ##syslog copy?
-            shutil.copy2('/etc/var/log/syslog', destination)
-        else:
-            print(init, " is not supported by this program for now!!")
 
+
+        srvs = open("srvs.lst", "w")
+        subprocess.call([ 'service', '--status-all'], stdout=srvs) #Get all service in Sysvinit style
+        subprocess.call([ 'last', '-f', 'i', 'lastlog'])
+        shutil.copy2('/etc/auth.log', destination)
+        #shutil.copy2 ##syslog copy?
+        shutil.copy2('/etc/var/log/syslog', destination)
         shutil.copy2('/etc/os-release', destination)
 
         # Obtain command history Per user.
@@ -154,7 +155,9 @@ if 1 <= args.Run_OP <= 3: #Check if run option is out of 1-3 range
                 match = re.match(histptn, fn)
                 if match:
                     hist_file_path = dirpath / fn
+                    fsstat(hist_file_path)
                     shutil.copy2(hist_file_path, user_dst) #be reminded that all history file are HIDDEN.
+                    
         
 #To do: loop all path in for loop with same args
 #### Log Check END ###
