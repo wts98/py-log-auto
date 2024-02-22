@@ -74,7 +74,7 @@ if 1 >= args.Run_OP <= 4: #Check if run option is out of 1-3 range
     init = initso.stdout.read()
     if args.Run_OP == 1:
         print("Log Gathering Will be carried out") 
-        Logdir=Path.cwd/'Logs'
+        Logdir=Path.cwd()/'Logs'
         Logdir.mkdir(parents=True, exist_ok=True)
         destination = Path.cwd()/"Logs"
         destination.mkdir()
