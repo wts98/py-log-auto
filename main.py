@@ -10,25 +10,8 @@ import glob #file only unix matching
 import logging
 import time
 from pwd import getpwuid
-import distro
 import datetime
-def parse_time(le): 
-    # Function to Identify timestamps, which gave me enourmous tons of troubles for me to setup regexp for those logs.
-    timestamp_patterns = [
-    "%Y-%m-%d %H:%M:%S",       # Example pattern: 2022-01-01 12:34:56
-    "%Y-%m-%d %I:%M:%S %p",    # Example pattern: 2022-01-01 12:34:56 AM
-    "%Y-%m-%d %H:%M:%S.%f"     # Example pattern: 2022-01-01 12:34:56.123456
-]
 
-    for pattern in timestamp_patterns:
-        if log_entry.startswith(pattern[:10]):
-            try:
-                timestamp = datetime.datetime.strptime(log_entry[:len(pattern)], pattern)
-                return timestamp
-            except ValueError:
-                pass
-
-    return None
 def fsstat(le):
     # Simple File Metadata function
     npath= Path(le)
@@ -105,6 +88,64 @@ def extract_timestamp_format(lines):
             break
     return timestamp_format
 
+def parse_time(le): 
+    # Function to Identify timestamps, which gave me enourmous tons of troubles for me to setup regexp for those logs.
+    timestamp_patterns = [
+    "%Y-%m-%d %H:%M:%S",       # Example pattern: 2022-01-01 12:34:56
+    "%Y-%m-%d %I:%M:%S %p",    # Example pattern: 2022-01-01 12:34:56 AM
+    "%Y-%m-%d %H:%M:%S.%f"     # Example pattern: 2022-01-01 12:34:56.123456
+]
+
+    for pattern in timestamp_patterns:
+        if le.startswith(pattern[:10]):
+            try:
+                timestamp = datetime.datetime.strptime(le[:len(pattern)], pattern)
+                return timestamp
+            except ValueError:
+                print("Timestamp of", le, "is not recognized")
+                pass
+
+    return None
+
+def load_yara_rules(directory):
+    regexes = []
+    if not os.path.exists(directory):
+        print(f"Error: The directory {directory} does not exist.")
+        return regexes
+
+    for path in Path(directory).glob('*.yar'):
+        try:
+            with open(path, 'r') as file:
+                yara_rule = file.read()
+                # Extract the strings and their modifiers from the YARA rule
+                matches = re.findall(r'(\$[a-zA-Z0-9_]+)\s*=\s*"(.*?)"\s*fullword ascii\s*(//\s*nocase)?', yara_rule)
+                # Convert the strings into regular expressions
+                for name, string, nocase in matches:
+                    # Replace YARA wildcards with regex wildcards
+                    string = string.replace('?', '.')
+                    # If the string is case-insensitive, add the IGNORECASE flag
+                    flags = re.IGNORECASE if nocase else 0
+                    regexes.append(re.compile(string, flags))
+        except Exception as e:
+            print(f"Error reading file {path}: {e}")
+    return regexes
+
+def create_report(report, format):
+    if format == 'txt':
+        with open('report.txt', 'w') as file:
+            for le, logs in report.items():
+                file.write(f"{le}: {len(logs)} matches found\n")
+                for timestamp, text in logs:
+                    file.write(f"  {timestamp}: {text}\n")
+    elif format == 'html':
+        with open('report.html', 'w') as file:
+            file.write('<html><body>\n')
+            for le, logs in report.items():
+                file.write(f"<h1>{le}: {len(logs)} matches found</h1>\n")
+                for timestamp, text in logs:
+                    file.write(f"<p>{timestamp}: {text}</p>\n")
+            file.write('</body></html>\n')
+
 verbose=0
 # Parser init
 parser = argparse.ArgumentParser(prog='Linux Log Forensic Automation', description='Only supports newer linux distribution running with systemd and using rsyslogd instead of syslog-ng')
@@ -112,7 +153,9 @@ parser.add_argument('Run_OP', nargs='?', type=int, help='Run_OP stands for the t
 # Verbosity !! need not to add second argument to this
 parser.add_argument('-v', '--verbose', action="count", help='enable verbose outputting for debug', default=0, dest='vb') 
 # Custom Path, variable $c should be parsed and taken in Gathering 
-parser.add_argument('-c', '--path', type=str, nargs='?', help='custom path to logs, format should be "/PATH/TO/LOG", absolute path are recommended.', dest='ptl')
+parser.add_argument('-c', '--path-custom', type=str, nargs='?', help='custom path to logs, format should be "/PATH/TO/LOG", absolute path are recommended.', dest='ptl')
+parser.add_argument('-y', '--path-yara', type=str, nargs='?', help='custom path to yara log folder, format should be "/PATH/TO/LOG", absolute path are recommended.', dest='pty')
+parser.add_argument('-f', '--format', choices=['txt', 'html'], default='txt', dest='fmt', help='Output format for the report (default: txt), html is also the other only option.')
 args = parser.parse_args()
 print(args.Run_OP, " is the running option I think")
 
@@ -137,85 +180,93 @@ if 1 >= args.Run_OP <= 4: #Check if run option is out of 1-3 range
         ### Log Check ? ###
         # Read line from file
         with open("SourcePath.txt", "a") as sp: #Funny thing that list all the copied logs as another, you gussed it, Log/Record!
-            if args.ptl is None:
-                if config_file_line:
-                    config_file_path = config_file_line.group(1)
-                    print(f"rsyslog.conf file found at: {config_file_path}")
+            with open("fireattr.csv", "a") as fileattr:
+                if args.ptl is None:
+                    if config_file_line:
+                        config_file_path = config_file_line.group(1)
+                        print(f"rsyslog.conf file found at: {config_file_path}")
 
-                    uncommented_lines = extract_uncommented_lines(config_file_path)
+                        uncommented_lines = extract_uncommented_lines(config_file_path)
 
-                    pattern = r'^\S+\s+/.+' #pattern to find path in all/most configuration file
+                        pattern = r'^\S+\s+/.+' #pattern to find path in all/most configuration file
 
-                    matching_lines = extract_lines_by_pattern(uncommented_lines, pattern)
+                        matching_lines = extract_lines_by_pattern(uncommented_lines, pattern)
 
-                    #Preconfigurated Rsyslogd config lines:
-                    print("The syslog path configuration of this system running on rsyslogd is: ")
-                    for line in matching_lines:
-                        pathentry=line.split()[1]
-                        shutil.copy2(pathentry, destination)
-                        sp.writelines(str(pathentry)+"\n")
-
-                else:
-                    print("This machine is either not running on rsyslogd, or rsyslogd.conf configuration file is not fonud in this machine, please consult your system administrator.")
-    
-                #Read default route (/var/log/*/*.log)
-                st_pt = Path('/var/log/') # starting poing
-                fileattr = open("fileattr.csv", "w")
-                if distro.id == 'Red Hat Enterprise Linux' or 'Fedora':
-                    shutil.copy2('/var/log/secure', destination)
-                    sp.writelines(str('/var/log/secure')+"\n")
-
-
-                else:
-                    shutil.copy2('/var/log/auth.log', destination)
-                    sp.writelines(str('var/log/auth.log')+"\n")
-
-
-                #To do: add a new list of whitelisted logs?
-                for pathentry in st_pt.glob('**/*'): #should it be trashed too?
-                    if pathentry.is_file():
-                        check = open(pathentry, 'rb').read() #check all text encoding of file
-                        m = magic.open(magic.MAGIC_MIME_ENCODING)
-                        m.load()
-                        encoding = m.buffer(check)
-                        if ((encoding == 'utf-8') or  (encoding == 'us-ascii')): #if matched either, the file is valid and readable
+                        #Preconfigurated Rsyslogd config lines:
+                        print("The syslog path configuration of this system running on rsyslogd is: ")
+                        for line in matching_lines:
+                            pathentry=line.split()[1]
+                            fsstat(pathentry)
                             shutil.copy2(pathentry, destination)
-                            #parent_dirs = list(pathentry.parents)
-                            #parent_dirs.reverse()  # Reverse the list to get from top-most parent to immediate parent
-                            #filename = f"{parent_dirs[0].name}_{pathentry.name}"
-                            #if parent_dirs[0].name != 'log':
-                            #    shutil.copy2(pathentry, destination/parent_dirs[0]/ filename)
-                            #else:
-                            #    shutil.copy2(pathentry, destination)
-                            #shutil.copytree(pathentry, destination)
-                            fsstat(pathentry)
                             sp.writelines(str(pathentry)+"\n")
-                        elif((encoding == 'empty')):
-                            print("File", pathentry, "is empty.")
-                        else:
-                            print("File", pathentry, "cannot be parsed.")
-            else:
-                if not os.path.exists(args.ptl):
-                    print(args.ptl," is not valid")
+
+                    else:
+                        print("This machine is either not running on rsyslogd, or rsyslogd.conf configuration file is not fonud in this machine, please consult your system administrator.")
+        
+                    #Read default route (/var/log/*/*.log)
+                    st_pt = Path('/var/log/') # starting poing?
+                    #fileattr = open("fileattr.csv", "w")
+                    with open('/etc/os-release') as os:
+                        if line.startswith('id'):
+                            distro=line.split('=')[1].strip().strip*("")
+                            break
+
+                    if distro == 'rhel' or 'fedora' or 'centos' or 'opensuse' or 'opensuse-leap' or 'sles' or 'sles_sap':
+                        fsstat(pathentry)
+                        shutil.copy2('/var/log/secure', destination)
+                        sp.writelines(str('/var/log/secure')+"\n")
+                        
+                        
+                    else:
+                        fsstat(pathentry)
+                        shutil.copy2('/var/log/auth.log', destination)
+                        sp.writelines(str('var/log/auth.log')+"\n")
+
+                    ##Service log collection
+                    #To do: add a new list of whitelisted logs?
+                    for pathentry in st_pt.glob('**/*'): #should it be trashed too?
+                        if pathentry.is_file():
+                            check = open(pathentry, 'rb').read() #check all text encoding of file
+                            m = magic.open(magic.MAGIC_MIME_ENCODING)
+                            m.load()
+                            encoding = m.buffer(check)
+                            if ((encoding == 'utf-8') or  (encoding == 'us-ascii')): #if matched either, the file is valid and readable
+                                shutil.copy2(pathentry, destination)
+                                #parent_dirs = list(pathentry.parents)
+                                #parent_dirs.reverse()  # Reverse the list to get from top-most parent to immediate parent
+                                #filename = f"{parent_dirs[0].name}_{pathentry.name}"
+                                #if parent_dirs[0].name != 'log':
+                                #    shutil.copy2(pathentry, destination/parent_dirs[0]/ filename)
+                                #else:
+                                #    shutil.copy2(pathentry, destination)
+                                #shutil.copytree(pathentry, destination)
+                                fsstat(pathentry)
+                                sp.writelines(str(pathentry)+"\n")
+                            elif((encoding == 'empty')):
+                                print("File", pathentry, "is empty.")
+                            else:
+                                print("File", pathentry, "cannot be parsed.")
                 else:
-                    print(args.ptl," is the given custom path to list of logs.")
-                    file = open(args.ptl, 'r') #Start of Custom Path
-                    filelines = file.readlines()
-                    fileattr = open("fileattr.csv", "w")
-                    for le in filelines:
-                        check = open(le.strip(), 'rb').read() #check all text encoding of file
-                        m = magic.open(magic.MAGIC_MIME_ENCODING)
-                        m.load()
-                        encoding = m.buffer(check)
-                        if ((encoding == 'utf-8') or  (encoding == 'us-ascii')): #if matched either, file is valid and readable // Should I do functional programming instead?
-                            shutil.copy2(le.strip(), destination) #secure copy to current dir
-                            #Check if log itself has been tampered with!!
-                            fsstat(pathentry)
-                            sp.writelines(str(pathentry)+"\n")
-                        else:
-                            print(le.strip()," is not valid path")
-        # Get bash history
-        #if init == 'systemd': #check if init system is systemd //trashed again
+                    if not os.path.exists(args.ptl):
+                        print(args.ptl," is not valid")
+                    else:
+                        print(args.ptl," is the given custom path to list of logs.")
+                        file = open(args.ptl, 'r') #Start of Custom Path
+                        filelines = file.readlines()
+                        for le in filelines:
+                            check = open(le.strip(), 'rb').read() #check all text encoding of file
+                            m = magic.open(magic.MAGIC_MIME_ENCODING)
+                            m.load()
+                            encoding = m.buffer(check)
+                            if ((encoding == 'utf-8') or  (encoding == 'us-ascii')): #if matched either, file is valid and readable // Should I do functional programming instead?
+                                shutil.copy2(le.strip(), destination) #secure copy to current dir
+                                #Check if log itself has been tampered with!!
+                                fsstat(pathentry)
+                                sp.writelines(str(pathentry)+"\n")
+                            else:
+                                print(le.strip()," is not valid path")
+            # Get bash history
+            #if init == 'systemd': #check if init system is systemd //trashed again
         with open("srvs.lst.enabled", "w") as srvs_enabled:
             subprocess.call(['systemctl', 'list-unit-files', '--type=service', '--state=enabled'], stdout=srvs_enabled) #Get services in systemd style
             subprocess.call(['sed','-i' , '1d;$d', 'srvs.list.enabled',]) #remove first and last line for text processing
@@ -333,13 +384,16 @@ if 1 >= args.Run_OP <= 4: #Check if run option is out of 1-3 range
     elif args.Run_OP == 3:
         print("Running Log Summarization")
         if (Path.cwd()/'CaughtLogs.txt').exist() == True:
+            #Load YARA rules in dir specified by user
+            regexes = load_yara_rules(args.pty)
+            report = {} 
             #collect none-users/disabled accounts which might be used for remote application shell exploitation
             noneuser=[]
             legituser=[]
             with open('/etc/shell', 'r') as shellsf:
-                shells = shellsf.file.read().splitlines
+                shells = shellsf.file.read().splitlines()
             with open('/etc/passwd', 'r') as file:
-                for line in file.read().splitlines:
+                for line in file.read().splitlines():
                     for shell in shells:
                         if shell in line:
                             legituser.append(line.split(':')[0])
@@ -348,48 +402,68 @@ if 1 >= args.Run_OP <= 4: #Check if run option is out of 1-3 range
                 #statement
             with open('/etc/hostname', 'r') as hostnamefile:
                 hostname= hostnamefile.read().rstrip()
-            file = open('CaughtLogs.txt', 'r') #Start of Custom Path
-            filelines = file.readlines()
-            for le in filelines:
-                if not os.path.exists(le):
-                    print(le, " is not found within the previous log collection")
-                else:
-                    #verify timestamp pattern:
-                    parsed_timestamp = parsed_timestamp(le)
-                    if parsed_timestamp is not None:
-                        print(f"{parsed_timestamp} is the timestamp format, which it would be stored.")
+            #file = open('CaughtLogs.txt', 'r') #Start of Custom Path
+            #filelines = file.readlines()
+            with open('CaughtLogs.txt', 'r') as file:
+                for le in filelines:
+                    le=le.strip()
+                    if not os.path.exists(le):
+                        print(le, " is not found within the previous log collection")
                     else:
-                        print("Unknown Timestamp format!")
-                        # R E G E X T I M E // re.match from file
-                        #VV the following function should able to be reused per each function? But will need to implement how to organize the output as well.
-                        #regex string e.g. root, whatever protocol Wit might be #root global matching
-                        
-                        with open(le, 'r') as file:
-                            text=file.read()
-                        print_matched_lines(regex, text)
-                        ##below are for auth.log
-                        
+                        #verify timestamp pattern:
+                        parsed_timestamp = parsed_timestamp(le)
+                        if parsed_timestamp is not None:
+                            print(f"{parsed_timestamp} is the timestamp format, which it would be stored.")
+                        else:
+                            print("Unknown Timestamp format!")
+                    
 
                         
-
-                        #    dateregex=r'(Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s([0-2][1-9]|3[0-1])\s([0-1][0-9]|2[0-4]):([0-5][0-9]):([0-5][0-9])\s' + hostname
+                            # R E G E X T I M E // re.match from file
+                            #VV the following function should able to be reused per each function? But will need to implement how to organize the output as well.
+                            #regex string e.g. root, whatever protocol Wit might be #root global matching
                             
-                        nonuserprivesc='"\w\w\w\s\d+\s\d{2}:\d{2}:\d{2}\s' + re.escape(hostname) + r"\s(sudo|login)\:\ssession\sopened\sopened\sfor\suser\sroot\sby$" + re.escape(noneuser[i])    
-                        #{Mon} {D} {HH:MM:SS} <hostname> <cmd/util like sudo,login etc>: pam_unix(cmd:session): session opened for user root by <username> (uid=0)
-                        useractivity=r"\w\w\w\s\d+\s\d{2}:\d{2}:\d{2}\s" + re.escape(hostname) + r"\s(sudo|login)\:\ssession\sopened\sopened\sfor\suser\sroot\sby$" + re.escape(legituser[i])
-                        #{Mon} {D} {HH:MM:SS} <hostname> sudo: pam_unix(sudo:session): session opened for user root by <username> (uid=0)
-                        #{Mon} {D} {HH:MM:SS} <hostname> login[pid]: pam_unix(login:session): session opened for user root by <username> (uid=0)
-                        #{Mon} {D} {HH:MM:SS} <hostname> login[pid]: pam_unix(login:auth): authentication failure, logname=<service name like postgres uid=<#> euid=<#> tty=tty1 ruser= rhost= user=<username>
-                        sudosession=r"(Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s([0-2][1-9]|3[0-1])\s([0-1][0-9]|2[0-4]):([0-5][0-9]):([0-5][0-9])\s" + re.escape(hostname) + r"login\[[([1-9]|[1-9][0-9]{1,4}|[1-3][0-9]{5}|40[0-9]{4}|41[0-8][0-9]{3}|419[0-2][0-9]{2}|41930[0-4])\]\]" #<=419304
-                        ##below are for syslog and daemon.log (too low level?)
-                        #{Mon} {D} {HH:MM:SS} <hostname> /usr/sbin/cron[pid]: (CRON) {INFO/STARTUP}
-                        #{Mon} {D} {HH:MM:SS} <hostname> <service name>: 
-                        #{Mon} {D} {HH:MM:SS} <hostname> init: tty<#> main process (#pid) killed by <type of> signal
-                        ##below are for vsftpd.log
-                        #{WEK} {MON} {D} {HH:MM:SS} {YYYY} [pid ####] CONNECT: Client "<ipv4 ip>"
-                        #{WEK} {MON} {D} {HH:MM:SS} {YYYY} [pid ####] [<username>] OK LOGIN: Client "<ipv4 ip>
+                            with open(le, 'r') as file:
+                                for line in file:
+                            # Match the log text against the YARA rule regexes
+                                    for regex in regexes:
+                                        if regex.search(line):
+                                            print(f"Match found in log: {line.strip()}")
+                                            # Parse timestamp from the line
+                                            parsed_timestamp = parse_time(line)
+                                            if parsed_timestamp is not None:
+                                                print(f"{parsed_timestamp} is the timestamp format, which it would be stored.")
+                                            else:
+                                                print("Unknown Timestamp format!")
+                                            # Add the log to the report
+                                            if le not in report:
+                                                report[le] = []
+                                            report[le].append((parsed_timestamp, line.strip()))
 
-                        #<username> : TTY=pts/# ; PWD=/path/to/cmd-entry ; USER=root ; COMMAND=/path/to/cmd/binary + arguments
+                        # Create the summary report
+                        create_report(report, 'args.fmt')  # Change 'txt' to 'html' for an HTML report
+
+
+                            
+
+                            #    dateregex=r'(Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s([0-2][1-9]|3[0-1])\s([0-1][0-9]|2[0-4]):([0-5][0-9]):([0-5][0-9])\s' + hostname
+                                
+                            #nonuserprivesc='"\w\w\w\s\d+\s\d{2}:\d{2}:\d{2}\s' + re.escape(hostname) + r"\s(sudo|login)\:\ssession\sopened\sopened\sfor\suser\sroot\sby$" + re.escape(noneuser[i])    
+                            #{Mon} {D} {HH:MM:SS} <hostname> <cmd/util like sudo,login etc>: pam_unix(cmd:session): session opened for user root by <username> (uid=0)
+                            #useractivity=r"\w\w\w\s\d+\s\d{2}:\d{2}:\d{2}\s" + re.escape(hostname) + r"\s(sudo|login)\:\ssession\sopened\sopened\sfor\suser\sroot\sby$" + re.escape(legituser[i])
+                            #{Mon} {D} {HH:MM:SS} <hostname> sudo: pam_unix(sudo:session): session opened for user root by <username> (uid=0)
+                            #{Mon} {D} {HH:MM:SS} <hostname> login[pid]: pam_unix(login:session): session opened for user root by <username> (uid=0)
+                            #{Mon} {D} {HH:MM:SS} <hostname> login[pid]: pam_unix(login:auth): authentication failure, logname=<service name like postgres uid=<#> euid=<#> tty=tty1 ruser= rhost= user=<username>
+                            #sudosession=r"(Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s([0-2][1-9]|3[0-1])\s([0-1][0-9]|2[0-4]):([0-5][0-9]):([0-5][0-9])\s" + re.escape(hostname) + r"login\[[([1-9]|[1-9][0-9]{1,4}|[1-3][0-9]{5}|40[0-9]{4}|41[0-8][0-9]{3}|419[0-2][0-9]{2}|41930[0-4])\]\]" #<=419304
+                            ##below are for syslog and daemon.log (too low level?)
+                            #{Mon} {D} {HH:MM:SS} <hostname> /usr/sbin/cron[pid]: (CRON) {INFO/STARTUP}
+                            #{Mon} {D} {HH:MM:SS} <hostname> <service name>: 
+                            #{Mon} {D} {HH:MM:SS} <hostname> init: tty<#> main process (#pid) killed by <type of> signal
+                            ##below are for vsftpd.log
+                            #{WEK} {MON} {D} {HH:MM:SS} {YYYY} [pid ####] CONNECT: Client "<ipv4 ip>"
+                            #{WEK} {MON} {D} {HH:MM:SS} {YYYY} [pid ####] [<username>] OK LOGIN: Client "<ipv4 ip>
+
+                            #<username> : TTY=pts/# ; PWD=/path/to/cmd-entry ; USER=root ; COMMAND=/path/to/cmd/binary + arguments
 
         else:
             print('Missing Log verification and gathering!')
