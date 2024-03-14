@@ -10,8 +10,27 @@ import glob #file only unix matching
 import logging
 import time
 from pwd import getpwuid
+import distro
+import datetime
+def parse_time(le): 
+    # Function to Identify timestamps, which gave me enourmous tons of troubles for me to setup regexp for those logs.
+    timestamp_patterns = [
+    "%Y-%m-%d %H:%M:%S",       # Example pattern: 2022-01-01 12:34:56
+    "%Y-%m-%d %I:%M:%S %p",    # Example pattern: 2022-01-01 12:34:56 AM
+    "%Y-%m-%d %H:%M:%S.%f"     # Example pattern: 2022-01-01 12:34:56.123456
+]
+
+    for pattern in timestamp_patterns:
+        if log_entry.startswith(pattern[:10]):
+            try:
+                timestamp = datetime.datetime.strptime(log_entry[:len(pattern)], pattern)
+                return timestamp
+            except ValueError:
+                pass
+
+    return None
 def fsstat(le):
-    #Check if log itself has been tampered with!!
+    # Simple File Metadata function
     npath= Path(le)
     #cts=time.ctime(npath.stat().st_ctime) // tampered by copytree()j
     mts=time.ctime(npath.stat().st_mtime)
@@ -22,7 +41,7 @@ def fsstat(le):
     fileattr.writelines("File Original Path: "+str(pathentry)+","+"Modified Time:"+ str(mts) + "," + str(ats) + "," + str(cuser) +"\n")
     
 
-def copytree(src, dst, symlinks = False, ignore = None):
+def copytree(src, dst, symlinks = False, ignore = None): #Should be trashed one way or another
   if not os.path.exists(dst):
     os.makedirs(dst)
     shutil.copystat(src, dst)
@@ -70,8 +89,8 @@ args = parser.parse_args()
 print(args.Run_OP, " is the running option I think")
 
 if 1 >= args.Run_OP <= 4: #Check if run option is out of 1-3 range
-    initso= subprocess.Popen(['ps', '-p', '1', '-o' 'comm='], stdout=subprocess.PIPE) # Get name of 1st ps (i.e. the name of the init system)
-    init = initso.stdout.read()
+    #initso= subprocess.Popen(['ps', '-p', '1', '-o' 'comm='], stdout=subprocess.PIPE) # Get name of 1st ps (i.e. the name of the init system)
+    #init = initso.stdout.read()
     if args.Run_OP == 1:
         print("Log Gathering Will be carried out") 
         #Logdir=Path.cwd()/'Logs'
@@ -86,7 +105,14 @@ if 1 >= args.Run_OP <= 4: #Check if run option is out of 1-3 range
                 #Read default route (/var/log/*/*.log)
                 st_pt = Path('/var/log/') # starting poing
                 fileattr = open("fileattr.csv", "w")
-                for pathentry in st_pt.glob('**/*'):
+                if distro.id == 'Red Hat Enterprise Linux' or 'Fedora':
+                    shutil.copy2('/var/log/secure', destination)
+                    sp.writelines(str('/var/log/secure')+"\n")
+                else:
+                    shutil.copy2('/var/log/auth.log', destination)
+                    sp.writelines(str('var/log/auth.log')+"\n")
+                #To do: add a new list of whitelisted logs?
+                for pathentry in st_pt.glob('**/*'): #should it be trashed too?
                     if pathentry.is_file():
                         check = open(pathentry, 'rb').read() #check all text encoding of file
                         m = magic.open(magic.MAGIC_MIME_ENCODING)
@@ -104,14 +130,16 @@ if 1 >= args.Run_OP <= 4: #Check if run option is out of 1-3 range
                             #shutil.copytree(pathentry, destination)
                             fsstat(pathentry)
                             sp.writelines(str(pathentry)+"\n")
+                        elif((encoding == 'empty')):
+                            print("File", pathentry, "is empty.")
                         else:
-                            print("File", pathentry, "is invalid")
+                            print("File", pathentry, "cannot be parsed.")
             else:
                 if not os.path.exists(args.ptl):
                     print(args.ptl," is not valid")
                 else:
-                    file = open(args.ptl, 'r') #Start of Custom Path
                     print(args.ptl," is the given custom path to list of logs.")
+                    file = open(args.ptl, 'r') #Start of Custom Path
                     filelines = file.readlines()
                     fileattr = open("fileattr.csv", "w")
                     for le in filelines:
@@ -127,22 +155,22 @@ if 1 >= args.Run_OP <= 4: #Check if run option is out of 1-3 range
                         else:
                             print(le.strip()," is not valid path")
         # Get bash history
-        if init == 'systemd': #check if init system is systemd
-            srvs_enabled = open("srvs.lst.enabled", "w")
+        #if init == 'systemd': #check if init system is systemd //trashed again
+        with open("srvs.lst.enabled", "w") as srvs_enabled:
             subprocess.call(['systemctl', 'list-unit-files', '--type=service', '--state=enabled'], stdout=srvs_enabled) #Get services in systemd style
             subprocess.call(['sed','-i' , '1d;$d', 'srvs.list.enabled',]) #remove first and last line for text processing
-            srvs_enabled.close()
-            srvs_disabled = open("srvs.lst.disabled", "w")
+        srvs_enabled.close()
+        with open("srvs.lst.disabled", "w") as srvs_disabled:
             subprocess.call(['systemctl', 'list-unit-files', '--type=service', '--state=disabled'], stdout=srvs_disabled) #Get services in systemd style
             subprocess.call(['sed','-i' , '1d;$d', 'srvs.list.disabled',])
             srvs_disabled.close()
-            srvs_static = open("srvs.lst.static", "w")
+        with open("srvs.lst.static", "w") as srvs_static:
             subprocess.call(['systemctl', 'list-unit-files', '--type=service', '--state=static'], stdout=srvs_static) #Get services in systemd style
             subprocess.call(['sed','-i' , '1d;$d', 'srvs.list.static',])
             srvs_static.close()
-            syslog = open("syslog", "w")
-            subprocess.call(['journalctl', '--no-pager'], stdout=syslog) #Get all journal logs in systemd style #default is compatible with other regex
-            syslog.close()
+        with open("journal.txt", "w") as sysdslog:
+            subprocess.call(['journalctl', '--no-pager'], stdout=sysdslog) #Get all journal logs in systemd style #default is compatible with other regex
+            sysdslog.close()
 
 
         srvs = open("srvs.lst", "w")
@@ -150,6 +178,7 @@ if 1 >= args.Run_OP <= 4: #Check if run option is out of 1-3 range
         subprocess.call([ 'service', '--status-all'], stdout=srvs) #Get all service in Sysvinit style
         subprocess.call([ 'last', '-i'], stdout=lastfile)
         #shutil.copy2('/var/log/auth.log', destination)
+        #shutil.copy2('/var/log/secure, destination)
         #shutil.copy2 ##syslog copy?
         #shutil.copy2('/var/log/syslog', destination)
         shutil.copy2('/etc/os-release', destination)
@@ -206,15 +235,21 @@ if 1 >= args.Run_OP <= 4: #Check if run option is out of 1-3 range
                         msrc=Path.cwd()/"syslog"
                         shutil.move(msrc, syslogdir)
                     else:
-                        logging.debug('syslog is not fonud')
+                        logging.debug('syslog is not found')
                     if (Path.cwd()/"auth.log"):
+                        authlog = Path.cwd*()/"auth.log"
                         logging.debug('auth.log is found')
-                        authlog = Path.cwd()/"auth"
-                        authlog.mkdir()
+                        sulog = Path.cwd()/"Superuser privilege"
                         msrc=Path.cwd()/"auth.log"
-                        shutil.move(msrc, authlog)
+                        shutil.move(msrc, sulog)
+                    elif (Path.cwd()/"secure"):
+                        logging.debug('Secure log is found')
+                        sulog = Path.cwd()/"Superuser privilege"
+                        authlog.mkdir()
+                        msrc=Path.cwd()/"seucre"
+                        shutil.move(msrc, sulog)
                     else:
-                        logging.debug('auth.log is not found')
+                        logging.debug('auth.log/secure is not found')
        
 
                     for i in range(len(files)): #Check Presence file? in /var/log?
@@ -228,6 +263,12 @@ if 1 >= args.Run_OP <= 4: #Check if run option is out of 1-3 range
                         #match name from srvs and record?
 
                     # regular expression to identify via file name
+                with open("fileattr.csv", "r") as fa:
+                    falines = far.readlines()
+                    for i in falines:
+                        #something to do
+                        break
+                        #check discreptancy in File attribute file
             #not exist
         else:
             print('var directory does not exist in the current directory', Path.cwd())
@@ -238,49 +279,60 @@ if 1 >= args.Run_OP <= 4: #Check if run option is out of 1-3 range
             #collect none-users/disabled accounts which might be used for remote application shell exploitation
             noneuser=[]
             legituser=[]
+            with open('/etc/shell', 'r') as shellsf:
+                shells = shellsf.file.read().splitlines
             with open('/etc/passwd', 'r') as file:
-                for line in file.readlines():
-                    if "nologin" in line: #\\ /bin/nologin
-                        noneuser.append(line.split(':')[0])
-                    elif "false" in line: #\\ /bin/false
-                        noneuser.append(line.split(':')[0])
-                    else: #\\ /bin/{any kinds of interactive or non-interactive shell}
-                        legituser.append(line.split(':')[0])
-                        # creating 3 list of users which identify
-            #statement
+                for line in file.read().splitlines:
+                    for shell in shells:
+                        if shell in line:
+                            legituser.append(line.split(':')[0])
+                        else:
+                            noneuser.append(line.split(':')[0])
+                #statement
+            with open('/etc/hostname', 'r') as hostnamefile:
+                hostname= hostnamefile.read().rstrip()
             file = open('CaughtLogs.txt', 'r') #Start of Custom Path
             filelines = file.readlines()
-        
             for le in filelines:
                 if not os.path.exists(le):
                     print(le, " is not found within the previous log collection")
                 else:
-                    # R E G E X T I M E // re.match from file
-                    #VV the following function should able to be reused per each function? But will need to implement how to organize the output as well.
-                    #regex string e.g. root, whatever protocol Wit might be #root global matching
-                    
-                    with open(le, 'r') as file:
-                        text=file.read()
-                    print_matched_lines(regex, text)
-                    ##below are for auth.log
-                    with open('/etc/hostname', 'r') as hostnamefile:
-                        hostname= hostnamefile.read().rstrip()
-                    nonuserprivesc=r"\w\w\w\s\d+\s\d{2}:\d{2}:\d{2}\s" + re.escape(hostname) + r"\s(sudo|login)\:\ssession\sopened\sopened\sfor\suser\sroot\sby$" + re.escape(noneuser[i])    
-                    #{Mon} {D} {HH:MM:SS} <hostname> <cmd/util like sudo,login etc>: pam_unix(cmd:session): session opened for user root by <username> (uid=0)
-                    useractivity=r"\w\w\w\s\d+\s\d{2}:\d{2}:\d{2}\s" + re.escape(hostname) + r"\s(sudo|login)\:\ssession\sopened\sopened\sfor\suser\sroot\sby$" + re.escape(legituser[i])
-                    #{Mon} {D} {HH:MM:SS} <hostname> sudo: pam_unix(sudo:session): session opened for user root by <username> (uid=0)
-                    #{Mon} {D} {HH:MM:SS} <hostname> login[pid]: pam_unix(login:session): session opened for user root by <username> (uid=0)
-                    #{Mon} {D} {HH:MM:SS} <hostname> login[pid]: pam_unix(login:auth): authentication failure, logname=<service name like postgres uid=<#> euid=<#> tty=tty1 ruser= rhost= user=<username>
+                    #verify timestamp pattern:
+                    parsed_timestamp = parsed_timestamp(le)
+                    if parsed_timestamp is not None:
+                        print(f"{parsed_timestamp} is the timestamp format, which it would be stored.")
+                    else:
+                        print("Unknown Timestamp format!")
+                        # R E G E X T I M E // re.match from file
+                        #VV the following function should able to be reused per each function? But will need to implement how to organize the output as well.
+                        #regex string e.g. root, whatever protocol Wit might be #root global matching
+                        
+                        with open(le, 'r') as file:
+                            text=file.read()
+                        print_matched_lines(regex, text)
+                        ##below are for auth.log
+                        
 
-                    ##below are for syslog and daemon.log (too low level?)
-                    #{Mon} {D} {HH:MM:SS} <hostname> /usr/sbin/cron[pid]: (CRON) {INFO/STARTUP}
-                    #{Mon} {D} {HH:MM:SS} <hostname> <service name>: 
-                    #{Mon} {D} {HH:MM:SS} <hostname> init: tty<#> main process (#pid) killed by <type of> signal
-                    ##below are for vsftpd.log
-                    #{WEK} {MON} {D} {HH:MM:SS} {YYYY} [pid ####] CONNECT: Client "<ipv4 ip>"
-                    #{WEK} {MON} {D} {HH:MM:SS} {YYYY} [pid ####] [<username>] OK LOGIN: Client "<ipv4 ip>
+                        
 
-                    #<username> : TTY=pts/# ; PWD=/path/to/cmd-entry ; USER=root ; COMMAND=/path/to/cmd/binary + arguments
+                        #    dateregex=r'(Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s([0-2][1-9]|3[0-1])\s([0-1][0-9]|2[0-4]):([0-5][0-9]):([0-5][0-9])\s' + hostname
+                            
+                        nonuserprivesc='"\w\w\w\s\d+\s\d{2}:\d{2}:\d{2}\s' + re.escape(hostname) + r"\s(sudo|login)\:\ssession\sopened\sopened\sfor\suser\sroot\sby$" + re.escape(noneuser[i])    
+                        #{Mon} {D} {HH:MM:SS} <hostname> <cmd/util like sudo,login etc>: pam_unix(cmd:session): session opened for user root by <username> (uid=0)
+                        useractivity=r"\w\w\w\s\d+\s\d{2}:\d{2}:\d{2}\s" + re.escape(hostname) + r"\s(sudo|login)\:\ssession\sopened\sopened\sfor\suser\sroot\sby$" + re.escape(legituser[i])
+                        #{Mon} {D} {HH:MM:SS} <hostname> sudo: pam_unix(sudo:session): session opened for user root by <username> (uid=0)
+                        #{Mon} {D} {HH:MM:SS} <hostname> login[pid]: pam_unix(login:session): session opened for user root by <username> (uid=0)
+                        #{Mon} {D} {HH:MM:SS} <hostname> login[pid]: pam_unix(login:auth): authentication failure, logname=<service name like postgres uid=<#> euid=<#> tty=tty1 ruser= rhost= user=<username>
+                        sudosession=r"(Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s([0-2][1-9]|3[0-1])\s([0-1][0-9]|2[0-4]):([0-5][0-9]):([0-5][0-9])\s" + re.escape(hostname) + r"login\[[([1-9]|[1-9][0-9]{1,4}|[1-3][0-9]{5}|40[0-9]{4}|41[0-8][0-9]{3}|419[0-2][0-9]{2}|41930[0-4])\]\]" #<=419304
+                        ##below are for syslog and daemon.log (too low level?)
+                        #{Mon} {D} {HH:MM:SS} <hostname> /usr/sbin/cron[pid]: (CRON) {INFO/STARTUP}
+                        #{Mon} {D} {HH:MM:SS} <hostname> <service name>: 
+                        #{Mon} {D} {HH:MM:SS} <hostname> init: tty<#> main process (#pid) killed by <type of> signal
+                        ##below are for vsftpd.log
+                        #{WEK} {MON} {D} {HH:MM:SS} {YYYY} [pid ####] CONNECT: Client "<ipv4 ip>"
+                        #{WEK} {MON} {D} {HH:MM:SS} {YYYY} [pid ####] [<username>] OK LOGIN: Client "<ipv4 ip>
+
+                        #<username> : TTY=pts/# ; PWD=/path/to/cmd-entry ; USER=root ; COMMAND=/path/to/cmd/binary + arguments
 
         else:
             print('Missing Log verification and gathering!')
