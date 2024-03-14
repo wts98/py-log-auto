@@ -77,9 +77,37 @@ def print_matched_lines(regex, text): #custom regex function to print matched li
                 print(f" - Match: {match}")
 users= [entry.name for entry in Path('/home').iterdir() if entry.is_dir()]
 
+# Function to extract uncommented configuration lines
+def extract_uncommented_lines(file_path):
+    uncommented_lines = []
+    with open(file_path, 'r') as conf_file:
+        for line in conf_file:
+            line = line.strip()
+            if line and not line.startswith('#'):
+                uncommented_lines.append(line)
+    return uncommented_lines
+
+# Function to extract lines matching a specific pattern
+def extract_lines_by_pattern(lines, pattern):
+    matching_lines = []
+    for line in lines:
+        if re.search(pattern, line):
+            matching_lines.append(line)
+    return matching_lines
+
+# Function to extract the timestamp format from the configuration lines
+def extract_timestamp_format(lines):
+    timestamp_format = None
+    for line in lines:
+        match = re.search(r'\$ActionFileDefaultTemplate (.+)', line)
+        if match:
+            timestamp_format = match.group(1)
+            break
+    return timestamp_format
+
 verbose=0
 # Parser init
-parser = argparse.ArgumentParser(prog='Linux Log Forensic Automation', description='Optional app description')
+parser = argparse.ArgumentParser(prog='Linux Log Forensic Automation', description='Only supports newer linux distribution running with systemd and using rsyslogd instead of syslog-ng')
 parser.add_argument('Run_OP', nargs='?', type=int, help='Run_OP stands for the three operations to do (in the range of 1-3), 1 for Log gathering, 2 for Log Classification (if a log dir was found), 3 for Log summary')
 # Verbosity !! need not to add second argument to this
 parser.add_argument('-v', '--verbose', action="count", help='enable verbose outputting for debug', default=0, dest='vb') 
@@ -97,20 +125,52 @@ if 1 >= args.Run_OP <= 4: #Check if run option is out of 1-3 range
         #Logdir.mkdir(parents=True, exist_ok=True)
         destination = Path.cwd()/"Logs"
         destination.mkdir(parents=True, exist_ok=True)
+
+        #Find if syslog is rsyslogd
+        output = subprocess.check_output(['rsyslogd', '-v'], universal_newlines=True)
+        config_file_line = re.search(r'Config file:\s+(.+)', output)
+
+
+
+        
         # func(Log Gathering)
         ### Log Check ? ###
         # Read line from file
         with open("SourcePath.txt", "a") as sp: #Funny thing that list all the copied logs as another, you gussed it, Log/Record!
             if args.ptl is None:
+                if config_file_line:
+                    config_file_path = config_file_line.group(1)
+                    print(f"rsyslog.conf file found at: {config_file_path}")
+
+                    uncommented_lines = extract_uncommented_lines(config_file_path)
+
+                    pattern = r'^\S+\s+/.+' #pattern to find path in all/most configuration file
+
+                    matching_lines = extract_lines_by_pattern(uncommented_lines, pattern)
+
+                    #Preconfigurated Rsyslogd config lines:
+                    print("The syslog path configuration of this system running on rsyslogd is: ")
+                    for line in matching_lines:
+                        pathentry=line.split()[1]
+                        shutil.copy2(pathentry, destination)
+                        sp.writelines(str(pathentry)+"\n")
+
+                else:
+                    print("This machine is either not running on rsyslogd, or rsyslogd.conf configuration file is not fonud in this machine, please consult your system administrator.")
+    
                 #Read default route (/var/log/*/*.log)
                 st_pt = Path('/var/log/') # starting poing
                 fileattr = open("fileattr.csv", "w")
                 if distro.id == 'Red Hat Enterprise Linux' or 'Fedora':
                     shutil.copy2('/var/log/secure', destination)
                     sp.writelines(str('/var/log/secure')+"\n")
+
+
                 else:
                     shutil.copy2('/var/log/auth.log', destination)
                     sp.writelines(str('var/log/auth.log')+"\n")
+
+
                 #To do: add a new list of whitelisted logs?
                 for pathentry in st_pt.glob('**/*'): #should it be trashed too?
                     if pathentry.is_file():
@@ -159,24 +219,21 @@ if 1 >= args.Run_OP <= 4: #Check if run option is out of 1-3 range
         with open("srvs.lst.enabled", "w") as srvs_enabled:
             subprocess.call(['systemctl', 'list-unit-files', '--type=service', '--state=enabled'], stdout=srvs_enabled) #Get services in systemd style
             subprocess.call(['sed','-i' , '1d;$d', 'srvs.list.enabled',]) #remove first and last line for text processing
-        srvs_enabled.close()
         with open("srvs.lst.disabled", "w") as srvs_disabled:
             subprocess.call(['systemctl', 'list-unit-files', '--type=service', '--state=disabled'], stdout=srvs_disabled) #Get services in systemd style
             subprocess.call(['sed','-i' , '1d;$d', 'srvs.list.disabled',])
-            srvs_disabled.close()
         with open("srvs.lst.static", "w") as srvs_static:
             subprocess.call(['systemctl', 'list-unit-files', '--type=service', '--state=static'], stdout=srvs_static) #Get services in systemd style
             subprocess.call(['sed','-i' , '1d;$d', 'srvs.list.static',])
-            srvs_static.close()
         with open("journal.txt", "w") as sysdslog:
             subprocess.call(['journalctl', '--no-pager'], stdout=sysdslog) #Get all journal logs in systemd style #default is compatible with other regex
-            sysdslog.close()
-
-
-        srvs = open("srvs.lst", "w")
-        lastfile= open("lastlog", "w")
-        subprocess.call([ 'service', '--status-all'], stdout=srvs) #Get all service in Sysvinit style
-        subprocess.call([ 'last', '-i'], stdout=lastfile)
+        with open("fail_stat", "w'") as faillog:
+            subprocess.call(['faillog', '-a'], stdout=fail_stat)
+        with open("srvs.lst", "w") as srvs2:
+            subprocess.call([ 'service', '--status-all'], stdout=srvs) #Get all service in Sysvinit style
+        with open("lastlog", "w") as lastlog:
+            subprocess.call([ 'last', '-i'], stdout=lastfile)
+    
         #shutil.copy2('/var/log/auth.log', destination)
         #shutil.copy2('/var/log/secure, destination)
         #shutil.copy2 ##syslog copy?
