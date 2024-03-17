@@ -9,6 +9,8 @@ import time
 from pwd import getpwuid
 import argparse
 import sys
+import csv
+from grp import getgrgid
 
 # Function to extract uncommented configuration lines
 def extract_uncommented_lines(file_path):
@@ -31,11 +33,17 @@ def extract_lines_by_pattern(lines, pattern):
 def fsstat(le):
     # Simple File Metadata function
     npath= Path(le)
+    st=npath.stat()
     #cts=time.ctime(npath.stat().st_ctime) // tampered by copytree()j
-    mts=time.ctime(npath.stat().st_mtime)
-    ats=time.ctime(npath.stat().st_atime)
-    cuser=getpwuid(npath.stat().st_uid).pw_name
-    fileattr.write(str(le)+","+ str(mts) + "," + str(ats) + "," + str(cuser) +"\n")
+    mts=time.ctime(st.st_mtime)
+    ats=time.ctime(st.st_atime)
+    cuser=getpwuid(st.st_uid).pw_name
+    cgroup=getgrgid(st.st_gid).gr_name
+    cmode=oct(st.st_mode)[-3:]
+    print(mts, ats, cuser)
+    return le, mts, ats, cuser, cgroup, cmode    
+
+
 
 
 verbose=0
@@ -84,7 +92,7 @@ if args.Run_OP in {1,2,3}: #Check if run option is out of 1-3 range
 
         service_names = []
         with open("file.attr.csv", "a") as fileattr:
-            fileattr.write("File Original Path"+","+"Modified Time"+","+"Last Access Time"+","+"File Creator"+"\n")
+            fileattr.write("File Original Path"+","+"Modified Time"+","+"Last Access Time"+","+"File Creator"+","+"Creator Group"+","+"Creator Mode"+"\n")
             if config_file_line:
                 config_file_path = config_file_line.group(1)
                 print(f"rsyslog.conf file found at: {config_file_path}")
@@ -137,9 +145,12 @@ if args.Run_OP in {1,2,3}: #Check if run option is out of 1-3 range
                             if log_name_regex.search(log_name):
                                 destination_path.parent.mkdir(parents=True, exist_ok=True)  # Create the parent directory if it does not exist
                                 shutil.copy2(pathentry, destination_path)
-                                fsstat(pathentry)
                                 src.writelines(f"{pathentry}\n")
-                                print(f"Copied {pathentry} to {destination_path}")
+                                #print(f"Copied {pathentry} to {destination_path}") (debugging)
+                                #print(str(le)+","+ str(mts) + "," + str(ats) + "," + str(cuser) +"\n") (debugging)
+                                le, mts, ats, cuser, cgroup, cmode=fsstat(pathentry)
+                                fileattr.write(f"{le},{mts},{ats},{cuser},{cgroup},{cmode}\n") #E//completely tampered by running on a high privileged user
+                                #auth.log/secure, syslog, kern.log will be tampered
                             else:
                                 print(f"Skipped {pathentry} because its name does not match the regex")
                             #parent_dirs = list(pathentry.parents)
@@ -167,21 +178,85 @@ if args.Run_OP in {1,2,3}: #Check if run option is out of 1-3 range
                         if match:
                             hist_file_path = dirpath / fn
                             print(hist_file_path)
-                            fsstat(hist_file_path)
-                            src.write(f"{hist_file_path}\n")
-                            shutil.copy2(hist_file_path, usrdir) #be reminded that all history file are HIDDEN.
+                            #fsstat(hist_file_path)
+                            #src.write(f"{hist_file_path}\n")
+                            shutil.copy2(hist_file_path, usrdir) 
         #PART 1 FINISHED
     elif args.Run_OP == 2:
         print("Running log Classification")
         cur = Path.cwd()
         pathcheck=0
         paths =[cur/'Logs', cur/'SourceList.txt', cur/'file.attr.csv', cur/'userlist/'] #requested paths
-        for path in paths:
-            if path.exists():
-                pathcheck += 1
-                if pathcheck == 4:
-                    print("All required documentation exist, now it will restart")
-            else:
-                print(f"Required {paths[path]} not found, please redo the collection")
+        pathcheck = sum(path.exists() for path in paths)
+        if pathcheck == len(paths):
+            print("All required documentation exist")
+            #do
+            # Read the CSV file as a reference list
+            reference_list = []
+            hist_reference_list =[]
+            with open("metatrace.md",'w') as histtrace:
+                with open('file.attr.csv', 'r') as csvfile:
+                    reader = csv.reader(csvfile)
+                    next(reader)  # Skip the header row
+                    for row in reader:
+                        reference_list.append([row[0], row[1], row[2], row[3], row[4], row[5]])
+                        hist_reference_list.append(Path(row[0]).name)
+
+                # Construct the destination path for each file in the "Logs" directory based on its parent directories
+                logs_dir = Path.cwd() / "Logs"
+                for ref_file in reference_list:
+                    dst_file = logs_dir / ref_file[0].replace('/var/log/', '')
+                    if dst_file.exists():
+                        # Compare the metadata of the files with the reference list
+                        mts = datetime.datetime.fromtimestamp(dst_file.stat().st_mtime).strftime('%Y-%m-%d %H:%M:%S')
+                        ats = datetime.datetime.fromtimestamp(dst_file.stat().st_atime).strftime('%Y-%m-%d %H:%M:%S')
+                        #cmode = oct(dst_file.stat().st_mode)[-3:]
+                        ref_mts = datetime.datetime.strptime(ref_file[1], '%a %b %d %H:%M:%S %Y').strftime('%Y-%m-%d %H:%M:%S')
+                        ref_ats = datetime.datetime.strptime(ref_file[2], '%a %b %d %H:%M:%S %Y').strftime('%Y-%m-%d %H:%M:%S')
+                        #ref_cmode = int(ref_file[5], 8)
+                        if mts != ref_mts or ats != ref_ats :#or cmode != ref_cmode:
+                            discrepancy = []
+                            if mts != ref_mts:
+                                discrepancy.append(f"mtime: {mts} != {ref_mts}")
+                            if ats != ref_ats:
+                                discrepancy.append(f"atime: {ats} != {ref_ats}")
+                            #if cmode != ref_cmode:
+                            #    discrepancy.append(f"cmode: {cmode} != {ref_cmode}")
+                            print(f"Time metadata discrepancy found for file {dst_file}: {', '.join(discrepancy)}")
+                            histtrace.write(f"{dst_file} : {', '.join(discrepancy)}\n")
+                    else:
+                        print(f"File {dst_file} not found in Logs directory")
+                        # Find all the user history files in the "userlist" directory
+                
+                userlist_dir = Path.cwd() / "userlist"
+                history_file_regex = re.compile(r'^\.[A-Za-z0-9_-]+_history$')
+                for user_dir in userlist_dir.iterdir():
+                    if user_dir.is_dir():
+                        history_file = None
+                        for file in user_dir.iterdir():
+                            if history_file_regex.match(file.name):
+                                history_file = file
+                                break
+
+                        if history_file is not None:
+                            print(history_file)
+                            # Read the user history file and check for matches with the log file names in the CSV file
+                            with open(history_file, 'r') as f:
+                                for i, line in enumerate(f):
+                                    for log_file in hist_reference_list:
+                                        if log_file in Path(line).name:
+                                            print(f"Match found in user history file {history_file}: {log_file} at line {i+1}")
+                                            histtrace.write(f"{i+1};{history_file} : {log_file}\n")
+                        else:
+                            print("History file not found")
+                    
+
+
+
+        elif args.Run_OP == 3:
+            print("Running Op3")
+
+        else:
+            print(f"Please redo the collection")
     else:
         print("Value more or eq to 3, invalid now")
