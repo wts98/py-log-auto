@@ -12,6 +12,41 @@ import sys
 import csv
 from grp import getgrgid
 
+timestamp_re_list = [
+    r'\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z',  # ISO 8601
+    r'\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3}',  # ISO 8601 with comma-separated milliseconds
+    r'\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d+',  # ISO 8601 with decimal seconds
+    r'\d{2}/\d{2}/\d{4} \d{2}:\d{2}:\d{2}',  # MM/DD/YYYY HH:MM:SS
+    r'\d{2}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}',  # MM/DD/YY HH:MM:SS
+    r'\d{2}-\w{3}-\d{4} \d{2}:\d{2}:\d{2}',  # DD-MMM-YYYY HH:MM:SS
+    r'\w{3} \d{1,2} \d{2}:\d{2}:\d{2}',  # MMM DD HH:MM:SS
+    r'\w{3} \d{1,2} \d{4} \d{2}:\d{2}:\d{2}',  # MMM DD YYYY HH:MM:SS
+    r'^\w{3} [ \d]\d \d{2}:\d{2}:\d{2}',  # MMM  D HH:MM:SS
+    r'\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d+\+\d{2}:\d{2}'
+]
+
+def match_patterns(line):
+    patterns = {
+        r'session\sopened\sfor\suser\sroot(?P<uid>\d+)\)': 'Root activity found',
+        r'USER\=root': 'Root activity found',
+        r'sudo[1-9]{4}': 'A user had used sudo to obtain privilege from the system',
+        r'eth.*link.*(?:up|down).*': 'Ethernet Link Up/Down Detected',
+        r'Recieved disconnect': 'Disconnection from remote',
+        r'Invalid user': 'Failed Login'
+    }
+
+    for pattern, message in patterns.items():
+        if re.search(pattern, line):
+            # Extract the timestamp and message from the log line
+            for log_re in log_re_list:
+                match = log_re.match(line)
+                if match:
+                    timestamp = match.group('timestamp')
+                    return message, timestamp
+
+    return None, None
+
+
 # Function to extract uncommented configuration lines
 def extract_uncommented_lines(file_path):
     uncommented_lines = []
@@ -168,14 +203,26 @@ if args.Run_OP in {1,2,3}: #Check if run option is out of 1-3 range
                                 else:
                                     print(f"Skipped {pathentry} because its name does not match the regex")
                         #Call Logs Via Commands instead of shutil.copy2:
-                        with open("journal.out", "a") as sysdslog: #445M
-                            subprocess.call(['journalctl', '--no-pager'], stdout=sysdslog) #Get all journal logs in systemd style #default is compatible with other regex
-                        with open("fail_stat.out", "a") as faillog:
-                            subprocess.call(['faillog', '-a'], stdout=faillog) #
-                        with open("lastlog.out", "a") as lastlog:
+                        LocalCommandOutputDIR = Path(Path.cwd() / "CMDOUT")
+                        LocalCommandOutputDIR.mkdir(parents=True, exist_ok=True)
+                        with open(LocalCommandOutputDIR/"journal.out", "a") as sysdslog: #445M
+                            subprocess.call(['journalctl', '--no-pager'], stdout=sysdslog)
+                            sysdslog.close() #Get all journal logs in systemd style #default is compatible with other regex
+                        with open(LocalCommandOutputDIR/"fail_stat.out", "a") as faillog:
+                            subprocess.call(['faillog', '-a'], stdout=faillog)
+                            faillog.close() #
+                        with open(LocalCommandOutputDIR/"lastlog.out", "a") as lastlog:
                             subprocess.call('lastlog', stdout=lastlog)
-                        with open("last.out", "a") as last:
+                            lastlog.close()
+                        with open(LocalCommandOutputDIR/"last.out", "a") as lastch:
                             subprocess.call(['last',], stdout=lastch)
+                            lastch.close()
+                        with open(LocalCommandOutputDIR/"lastb.out", "a") as lastb:
+                            subprocess.call(['lastb',], stdout=lastb)
+                            lastb.close()
+
+                        
+                        
                                 #parent_dirs = list(pathentry.parents)
                                 #parent_dirs.reverse()  # Reverse the list to get from top-most parent to immediate parent
                                 #filename = f"{parent_dirs[0].name}_{pathentry.name}"
@@ -308,33 +355,34 @@ if args.Run_OP in {1,2,3}: #Check if run option is out of 1-3 range
             pmf.mkdir(parents=True, exist_ok=True)
             systemfacing=set()
             pkgmgr=set()
-            with open("systemlog.csv", "r") as sysw:
-                reader = csv.reader(sysw)
-                first_column=[]
-                for row in reader:
-                    file_path = Path(row[0]).name
-                    with open('Package-Manage-Logs.txt', 'a') as pml:
-                        for file_path in destination.glob('**/*'):
-                            # Check if the file has no parent directory
-                            if str(file_path).startswith(str(destination)) and len(file_path.relative_to(destination).parts) == 1:
-                                # File has no parent directory
-                                print(f'{file_path} has no parent directory')
-                                #if file_path != ['dpkg.log', 'dnf.librepo.log, dnf.log, dnf.rpm.log']
-                                if file_path in ['auth.log', 'secure', 'kern.log', 'messages', 'syslog', 'boot.log', 'bootstrap.log']:
-                                    print(f"{file_path} is being moved")
-                                    systemfacing.appends(file_path)
-                                    shutil.move(file_path, sysf)
-                                elif file_path in ['dpkg.log', 'dnf.librepo.log', 'dnf.log', 'dnf.rpm.log', 'zypper.log']: #Package manager Logs
-                                    prnt(f"{file_path} is package manager log")
-                                    pkgmgr.appends(file_path)
-                                    shutil.move(file_path, pmf)
-                                    pml.write(file_path)
-                                # Do something with the file
-                            # Check if the file has a parent directory that is not equal to destination
-                            else:
-                                print(f'{file_path} has parent directory {file_path.parent.relative_to(destination)}')
-                                #those are services etc
-                                # Do something else with the file
+            if Path(destination/"systemlog.csv").exists() == True:
+                with open("systemlog.csv", "r") as sysw:
+                    reader = csv.reader(sysw)
+                    first_column=[]
+                    for row in reader:
+                        file_path = Path(row[0]).name
+            with open('Package-Manage-Logs.txt', 'a') as pml:
+                for file_path in destination.glob('**/*'):
+                    # Check if the file has no parent directory
+                    if str(file_path).startswith(str(destination)) and len(file_path.relative_to(destination).parts) == 1:
+                        # File has no parent directory
+                        print(f'{file_path} has no parent directory')
+                        #if file_path != ['dpkg.log', 'dnf.librepo.log, dnf.log, dnf.rpm.log']
+                        if file_path in ['auth.log', 'secure', 'kern.log', 'messages', 'syslog', 'boot.log', 'bootstrap.log']:
+                            print(f"{file_path} is being moved")
+                            systemfacing.add(file_path)
+                            shutil.move(file_path, sysf)
+                        elif file_path in ['dpkg.log', 'dnf.librepo.log', 'dnf.log', 'dnf.rpm.log', 'zypper.log']: #Package manager Logs
+                            prnt(f"{file_path} is package manager log")
+                            pkgmgr.add(file_path)
+                            shutil.move(file_path, pmf)
+                            pml.write(file_path)
+                        # Do something with the file
+                    # Check if the file has a parent directory that is not equal to destination
+                    else:
+                        print(f'{file_path} has parent directory {file_path.parent.relative_to(destination)}')
+                        #those are services etc
+                        # Do something else with the file
                                         
 
 
@@ -346,12 +394,21 @@ if args.Run_OP in {1,2,3}: #Check if run option is out of 1-3 range
             print(f"Please redo the log collection via `sudo python3 .py 1")
     elif args.Run_OP == 3:
             print("Running Op3")
-            systemfacing=[]
-            if destination.exists() == True:
-                for i in destination.rglob("**/*"):
-                    if str(i).startswith(str(destination)) and len(i.relative_to(destination).parts) == 1:
-                        systemfacing.append(i)
-
+            output_file = Path(str(input()))
+            log_re_list = [re.compile(f'^(?P<timestamp>{timestamp_re}).*?(?P<message>.*)$') for timestamp_re in timestamp_re_list]
+            with open(output_file, 'w') as out:
+                for log_file in destination.glob('*.log'):
+                    with open(log_file) as f:
+                        for line_number, line in enumerate(f, start=1):
+                            line = line.strip()
+                            if line:
+                                # Try to match the timestamp and message using the regular expression
+                                message, timestamp = match_patterns(line)
+                                if message:
+                                    print(f'File: {log_file}: Line {line_number}: Time: {timestamp}: Message: {message}\n')
+                                    print(f'{line}\n')
+                                    out.write(f'File: {log_file}: Line {line_number}: Time: {timestamp}: Message: {message}\n')
+                                    out.write(f'{line}\n')
 
 
 
