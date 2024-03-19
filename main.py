@@ -11,6 +11,7 @@ import argparse
 import sys
 import csv
 from grp import getgrgid
+import logging
 
 timestamp_re_list = [
     r'\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z',  # ISO 8601
@@ -77,7 +78,7 @@ def fsstat(le):
     cuser=getpwuid(st.st_uid).pw_name
     cgroup=getgrgid(st.st_gid).gr_name
     cmode=oct(st.st_mode)[-3:]
-    print(mts, ats, cuser)
+    #debug.logging(f"mts, ats, cuser")
     return le, mts, ats, cuser, cgroup, cmode    
 
 
@@ -88,14 +89,15 @@ verbose=0
 parser = argparse.ArgumentParser(prog='Linux Log Forensic Automation', description='Only supports newer linux distribution running with systemd and using rsyslogd instead of syslog-ng')
 parser.add_argument('Run_OP', nargs='?', type=int, help='Run_OP stands for the three operations to do (in the range of 1-3), 1 for Log gathering, 2 for Log Classification (if a log dir was found), 3 for Log summary')
 # Verbosity !! need not to add second argument to this
-parser.add_argument('-v', '--verbose', type=str, nargs='?', help='enable verbose outputting for debug', default=None, dest='vb') 
+parser.add_argument('-v', '--verbose', help='enable verbose outputting for debug', default=None, action="store_true")
 # Custom Path, variable $c should be parsed and taken in Gathering 
 parser.add_argument('-c', '--path-custom', type=str, nargs='?', default=None, help='custom path to list of logs, format should be "/path/to/logs_txt", absolute path are recommended.', dest='ptl')
 parser.add_argument('-y', '--path-yara', type=str, nargs='?', default=None, help='custom path to yara log folder, format should be "/path/to/yara_dir", absolute path are recommended.', dest='pty')
 parser.add_argument('-f', '--format', choices=['txt', 'html'], default='txt', dest='fmt', help='Output format for the report (default: txt), html is also the other only option.')
 args = parser.parse_args()
 #print(args.Run_OP, " is the running option I think")
-
+if args.verbose:
+    logging.basicConfig(level=logging.DEBUG)
 #root = logging.getLogger()
 #handler = logging.StreamHandler(sys.stdout)
 #handler.setLevel(vb)
@@ -117,8 +119,9 @@ if args.Run_OP in {1,2,3}: #Check if run option is out of 1-3 range
     #PART 1 START
             users= [entry.name for entry in Path('/home').iterdir() if entry.is_dir()]
             destination.mkdir(parents=True, exist_ok=True)
+            logging.debug("Collection directory \"Logs\" created successfully.")
             services = subprocess.getoutput('systemctl list-unit-files -t service --full --all --plain --no-legend').splitlines()
-
+            logging.debug("Obtained Service List")
             output = subprocess.check_output(['rsyslogd', '-v'], universal_newlines=True)
             config_file_line = re.search(r'Config file:\s+(.+)', output)
 
@@ -195,31 +198,15 @@ if args.Run_OP in {1,2,3}: #Check if run option is out of 1-3 range
                                     destination_path.parent.mkdir(parents=True, exist_ok=True)  # Create the parent directory if it does not exist
                                     shutil.copy2(pathentry, destination_path)
                                     src.writelines(f"{pathentry}\n")
-                                    #print(f"Copied {pathentry} to {destination_path}") (debugging)
-                                    #print(str(le)+","+ str(mts) + "," + str(ats) + "," + str(cuser) +"\n") (debugging)
+                                    logging.debug(f"Copied {pathentry} to {destination_path}") #(debugging)
                                     le, mts, ats, cuser, cgroup, cmode=fsstat(pathentry)
                                     fileattr.write(f"{le},{mts},{ats},{cuser},{cgroup},{cmode}\n") #E//completely tampered by running on a high privileged user
+                                    logging.debug("MetaData found:"+ str(le)+","+ str(mts) + "," + str(ats) + "," + str(cuser) +"\n") #(debugging)
                                     #auth.log/secure, syslog, kern.log will be tampered
                                 else:
                                     print(f"Skipped {pathentry} because its name does not match the regex")
                         #Call Logs Via Commands instead of shutil.copy2:
-                        LocalCommandOutputDIR = Path(Path.cwd() / "CMDOUT")
-                        LocalCommandOutputDIR.mkdir(parents=True, exist_ok=True)
-                        with open(LocalCommandOutputDIR/"journal.out", "a") as sysdslog: #445M
-                            subprocess.call(['journalctl', '--no-pager'], stdout=sysdslog)
-                            sysdslog.close() #Get all journal logs in systemd style #default is compatible with other regex
-                        with open(LocalCommandOutputDIR/"fail_stat.out", "a") as faillog:
-                            subprocess.call(['faillog', '-a'], stdout=faillog)
-                            faillog.close() #
-                        with open(LocalCommandOutputDIR/"lastlog.out", "a") as lastlog:
-                            subprocess.call('lastlog', stdout=lastlog)
-                            lastlog.close()
-                        with open(LocalCommandOutputDIR/"last.out", "a") as lastch:
-                            subprocess.call(['last',], stdout=lastch)
-                            lastch.close()
-                        with open(LocalCommandOutputDIR/"lastb.out", "a") as lastb:
-                            subprocess.call(['lastb',], stdout=lastb)
-                            lastb.close()
+                        
 
                         
                         
@@ -257,6 +244,7 @@ if args.Run_OP in {1,2,3}: #Check if run option is out of 1-3 range
                                         src.writelines(f"{i}\n")
                                         le, mts, ats, cuser, cgroup, cmode=fsstat(pathentry)
                                         fileattr.write(f"{le},{mts},{ats},{cuser},{cgroup},{cmode}\n")
+                                        logging.debug("MetaData found:"+ str(le)+","+ str(mts) + "," + str(ats) + "," + str(cuser) +"\n")
                                     else:
                                         print(f"{i} is an empty or corrupted.")
 
@@ -278,7 +266,31 @@ if args.Run_OP in {1,2,3}: #Check if run option is out of 1-3 range
                     print(hist_file_path)
                     #fsstat(hist_file_path)
                     #src.write(f"{hist_file_path}\n")
-                    shutil.copy2(hist_file_path, usrdir) 
+                    shutil.copy2(hist_file_path, usrdir)
+                    logging.debug(f"History file of user {d} obtained")
+
+        LocalCommandOutputDIR = Path(Path.cwd() / "CMDOUT")
+        LocalCommandOutputDIR.mkdir(parents=True, exist_ok=True)
+        with open(LocalCommandOutputDIR/"journal.out", "a") as sysdslog: #445M
+            subprocess.call(['journalctl', '--no-pager'], stdout=sysdslog)
+            logging.debug("Journal File obtained as journal.out")
+            sysdslog.close() #Get all journal logs in systemd style #default is compatible with other regex
+        with open(LocalCommandOutputDIR/"fail_stat.out", "a") as faillog:
+            subprocess.call(['faillog', '-a'], stdout=faillog)
+            logging.debug("Failed Login Info obtained as faillog")
+            faillog.close() #
+        with open(LocalCommandOutputDIR/"lastlog.out", "a") as lastlog:
+            subprocess.call('lastlog', stdout=lastlog)
+            logging.debug("Last System Modification Info File obtained as faillog")
+            lastlog.close()
+        with open(LocalCommandOutputDIR/"last.out", "a") as lastch:
+            subprocess.call(['last',], stdout=lastch)
+            logging.debug("Currently and last logged in Info File obtained as last.out")
+            lastch.close()
+        with open(LocalCommandOutputDIR/"lastb.out", "a") as lastb:
+            subprocess.call(['lastb',], stdout=lastb)
+            logging.debug("Last Logged in Info File obtained as lastb.out")
+            lastb.close()
                         
         #PART 1 FINISHED
     elif args.Run_OP == 2:
@@ -362,27 +374,34 @@ if args.Run_OP in {1,2,3}: #Check if run option is out of 1-3 range
                     for row in reader:
                         file_path = Path(row[0]).name
             with open('Package-Manage-Logs.txt', 'a') as pml:
-                for file_path in destination.glob('**/*'):
+                systementry=['auth.log', 'secure', 'kern.log', 'messages', 'syslog', 'boot.log', 'bootstrap.log', 'mail.log']
+                pkglog=['dpkg.log', 'dnf.librepo.log', 'dnf.log', 'dnf.rpm.log', 'zypper.log']
+                for file_path in destination.glob(f'**/*'):
                     # Check if the file has no parent directory
                     if str(file_path).startswith(str(destination)) and len(file_path.relative_to(destination).parts) == 1:
                         # File has no parent directory
                         print(f'{file_path} has no parent directory')
                         #if file_path != ['dpkg.log', 'dnf.librepo.log, dnf.log, dnf.rpm.log']
-                        if file_path in ['auth.log', 'secure', 'kern.log', 'messages', 'syslog', 'boot.log', 'bootstrap.log']:
+                        if any(file_path.name.startswith(log_file) for log_file in systementry):
                             print(f"{file_path} is being moved")
+                            file_path=str(file_path)
                             systemfacing.add(file_path)
                             shutil.move(file_path, sysf)
-                        elif file_path in ['dpkg.log', 'dnf.librepo.log', 'dnf.log', 'dnf.rpm.log', 'zypper.log']: #Package manager Logs
-                            prnt(f"{file_path} is package manager log")
+                        elif any(file_path.name.startswith(log_file) for log_file in pkglog): #Package manager Logs
+                            print(f"{file_path} is package manager log")
+                            file_path=str(file_path)
                             pkgmgr.add(file_path)
                             shutil.move(file_path, pmf)
                             pml.write(file_path)
+                        else:
+                            print(f"{file_path} isn't real")
                         # Do something with the file
                     # Check if the file has a parent directory that is not equal to destination
                     else:
                         print(f'{file_path} has parent directory {file_path.parent.relative_to(destination)}')
                         #those are services etc
                         # Do something else with the file
+
                                         
 
 
@@ -394,21 +413,42 @@ if args.Run_OP in {1,2,3}: #Check if run option is out of 1-3 range
             print(f"Please redo the log collection via `sudo python3 .py 1")
     elif args.Run_OP == 3:
             print("Running Op3")
-            output_file = Path(str(input()))
-            log_re_list = [re.compile(f'^(?P<timestamp>{timestamp_re}).*?(?P<message>.*)$') for timestamp_re in timestamp_re_list]
-            with open(output_file, 'w') as out:
+            report = {} 
+            #collect none-users/disabled accounts which might be used for remote application shell exploitation
+            noneuser=[]
+            legituser=[]
+            with open('/etc/shell', 'r') as shellsf:
+                shells = shellsf.file.read().splitlines()
+            with open('/etc/passwd', 'r') as file:
+                for line in file.read().splitlines():
+                    for shell in shells:
+                        if shell in line:
+                            legituser.append(line.split(':')[0])
+                        else:
+                            noneuser.append(line.split(':')[0])
+                #statement
+            with open(output_file, 'a') as out:
                 for log_file in destination.glob('*.log'):
+                    pattern_counts = 0
                     with open(log_file) as f:
                         for line_number, line in enumerate(f, start=1):
                             line = line.strip()
                             if line:
                                 # Try to match the timestamp and message using the regular expression
-                                message, timestamp = match_patterns(line)
+                                message, timestamp = match_patterns(line, pattern_counts)
                                 if message:
-                                    print(f'File: {log_file}: Line {line_number}: Time: {timestamp}: Message: {message}\n')
-                                    print(f'{line}\n')
+                                    #print(f'File: {log_file}: Line {line_number}: Time: {timestamp}: Message: {message}\n')
+                                    #print(f'{line}\n')
                                     out.write(f'File: {log_file}: Line {line_number}: Time: {timestamp}: Message: {message}\n')
                                     out.write(f'{line}\n')
+                                    pattern_counts += 1
+                    print(f'Pattern counts for {log_file}: {pattern_counts}\n')
+                    for pattern, description in patterns.items():
+                        count = re.findall(pattern, open(log_file).read())
+                        print(f'{description}: {len(count)}')
+                        out.write(f'{description}: {len(count)}\n')
+                    out.write(f'Total matches for {log_file}: {pattern_counts}\n')
+                    out.write(f'{description}: {len(count)}\n')
 
 
 
@@ -422,4 +462,4 @@ if args.Run_OP in {1,2,3}: #Check if run option is out of 1-3 range
                         #cron log can be separated, while defaulted to syslog
     
     else:
-        print("Invalid optin, exit now")
+        print("Invalid option (less than 1 or more than 3), exit now")
