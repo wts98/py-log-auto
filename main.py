@@ -26,18 +26,21 @@ timestamp_re_list = [
     r'\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d+\+\d{2}:\d{2}'
 ]
 
-def match_patterns(line):
-    patterns = {
+patterns = {
         r'session\sopened\sfor\suser\sroot(?P<uid>\d+)\)': 'Root activity found',
         r'USER\=root': 'Root activity found',
         r'sudo[1-9]{4}': 'A user had used sudo to obtain privilege from the system',
         r'eth.*link.*(?:up|down).*': 'Ethernet Link Up/Down Detected',
         r'Recieved disconnect': 'Disconnection from remote',
-        r'Invalid user': 'Failed Login'
+        r'Invalid user': 'Failed Login',
+        #rf'{noneuser_pattern}': 'Possible shell spawn',
+        #rf'{shells_pattern}': 'Shell'
     }
-
+def match_patterns(line, pattern_counts):
     for pattern, message in patterns.items():
         if re.search(pattern, line):
+            # Increment the count for the pattern
+            pattern_counts += 1
             # Extract the timestamp and message from the log line
             for log_re in log_re_list:
                 match = log_re.match(line)
@@ -161,7 +164,7 @@ if args.Run_OP in {1,2,3}: #Check if run option is out of 1-3 range
                         
 
                 else:
-                    print("This machine is either not running on rsyslogd, or rsyslogd.conf configuration file is not fonud in this machine, please consult your system administrator.")
+                    print("This machine is either not running on rsyslogd, or rsyslogd.conf configuration file is not found in this machine, please consult your system administrator.")
 
         
 
@@ -297,10 +300,10 @@ if args.Run_OP in {1,2,3}: #Check if run option is out of 1-3 range
         print("Running log Classification")
         pathcheck=0
         cur=Path.cwd()
-        paths =[cur/'Logs', cur/'SourceList.txt', cur/'file.attr.csv', cur/'userlist'] #requested paths
+        paths =[cur/'Logs', cur/'SourceList.txt', cur/'file.attr.csv', cur/'userlist', cur/'Service.list'] #requested paths
         pathcheck = sum(path.exists() for path in paths)
         if pathcheck == len(paths):
-            print("All required documentation exist")
+            print("All required files exist")
             #do
             # Read the CSV file as a reference list
             reference_list = []
@@ -380,25 +383,25 @@ if args.Run_OP in {1,2,3}: #Check if run option is out of 1-3 range
                     # Check if the file has no parent directory
                     if str(file_path).startswith(str(destination)) and len(file_path.relative_to(destination).parts) == 1:
                         # File has no parent directory
-                        print(f'{file_path} has no parent directory')
+                        logging.debug(f'{file_path} has no parent directory')
                         #if file_path != ['dpkg.log', 'dnf.librepo.log, dnf.log, dnf.rpm.log']
                         if any(file_path.name.startswith(log_file) for log_file in systementry):
-                            print(f"{file_path} is being moved")
+                            logging.debug(f"{file_path} is being moved")
                             file_path=str(file_path)
                             systemfacing.add(file_path)
                             shutil.move(file_path, sysf)
                         elif any(file_path.name.startswith(log_file) for log_file in pkglog): #Package manager Logs
-                            print(f"{file_path} is package manager log")
+                            logging.debug(f"{file_path} is package manager log")
                             file_path=str(file_path)
                             pkgmgr.add(file_path)
                             shutil.move(file_path, pmf)
                             pml.write(file_path)
-                        else:
-                            print(f"{file_path} isn't real")
+                        #else:
+                            #print(f"{file_path} isn't real")
                         # Do something with the file
                     # Check if the file has a parent directory that is not equal to destination
                     else:
-                        print(f'{file_path} has parent directory {file_path.parent.relative_to(destination)}')
+                        logging.debug(f'{file_path} has parent directory {file_path.parent.relative_to(destination)}')
                         #those are services etc
                         # Do something else with the file
 
@@ -413,12 +416,17 @@ if args.Run_OP in {1,2,3}: #Check if run option is out of 1-3 range
             print(f"Please redo the log collection via `sudo python3 .py 1")
     elif args.Run_OP == 3:
             print("Running Op3")
+            log_re_list = [re.compile(f'^(?P<timestamp>{timestamp_re}).*?(?P<message>.*)$') for timestamp_re in timestamp_re_list]
+            output_file = Path(input("Input your desired report save location in Linux absolute path: (e.g. /home/$USERNAME/Report.txt): \n"))
+            if output_file == Path('.'):
+                output_file = Path.cwd()/'OutputReport.txt'
             report = {} 
             #collect none-users/disabled accounts which might be used for remote application shell exploitation
             noneuser=[]
             legituser=[]
-            with open('/etc/shell', 'r') as shellsf:
-                shells = shellsf.file.read().splitlines()
+            with open('/etc/shells', 'r') as shellsf:
+                shells = shellsf.read().splitlines()
+                shells_pattern = '|'.join(shells)
             with open('/etc/passwd', 'r') as file:
                 for line in file.read().splitlines():
                     for shell in shells:
@@ -426,9 +434,10 @@ if args.Run_OP in {1,2,3}: #Check if run option is out of 1-3 range
                             legituser.append(line.split(':')[0])
                         else:
                             noneuser.append(line.split(':')[0])
+            nonuser_pattern='|'.join(noneuser)
                 #statement
             with open(output_file, 'a') as out:
-                for log_file in destination.glob('*.log'):
+                for log_file in destination.rglob('*.log*'):
                     pattern_counts = 0
                     with open(log_file) as f:
                         for line_number, line in enumerate(f, start=1):
@@ -445,7 +454,7 @@ if args.Run_OP in {1,2,3}: #Check if run option is out of 1-3 range
                     print(f'Pattern counts for {log_file}: {pattern_counts}\n')
                     for pattern, description in patterns.items():
                         count = re.findall(pattern, open(log_file).read())
-                        print(f'{description}: {len(count)}')
+                        #print(f'{description}: {len(count)}')
                         out.write(f'{description}: {len(count)}\n')
                     out.write(f'Total matches for {log_file}: {pattern_counts}\n')
                     out.write(f'{description}: {len(count)}\n')
