@@ -27,7 +27,7 @@ timestamp_re_list = [
 ]
 
 patterns = {
-        r'session\sopened\sfor\suser\sroot(?P<uid>\d+)\)': 'Root activity found',
+        r'session\sopened\sfor\suser\sroot(?P<uid>\d+)\)': 'Root session opened',
         r'USER\=root': 'Root activity found',
         r'sudo[1-9]{4}': 'A user had used sudo to obtain privilege from the system',
         r'eth.*link.*(?:up|down).*': 'Ethernet Link Up/Down Detected',
@@ -416,48 +416,60 @@ if args.Run_OP in {1,2,3}: #Check if run option is out of 1-3 range
             print(f"Please redo the log collection via `sudo python3 .py 1")
     elif args.Run_OP == 3:
             print("Running Op3")
-            log_re_list = [re.compile(f'^(?P<timestamp>{timestamp_re}).*?(?P<message>.*)$') for timestamp_re in timestamp_re_list]
-            output_file = Path(input("Input your desired report save location in Linux absolute path: (e.g. /home/$USERNAME/Report.txt): \n"))
-            if output_file == Path('.'):
-                output_file = Path.cwd()/'OutputReport.txt'
-            report = {} 
-            #collect none-users/disabled accounts which might be used for remote application shell exploitation
-            noneuser=[]
-            legituser=[]
-            with open('/etc/shells', 'r') as shellsf:
-                shells = shellsf.read().splitlines()
-                shells_pattern = '|'.join(shells)
-            with open('/etc/passwd', 'r') as file:
-                for line in file.read().splitlines():
-                    for shell in shells:
-                        if shell in line:
-                            legituser.append(line.split(':')[0])
-                        else:
-                            noneuser.append(line.split(':')[0])
-            nonuser_pattern='|'.join(noneuser)
-                #statement
-            with open(output_file, 'a') as out:
-                for log_file in destination.rglob('*.log*'):
-                    pattern_counts = 0
-                    with open(log_file) as f:
-                        for line_number, line in enumerate(f, start=1):
-                            line = line.strip()
-                            if line:
-                                # Try to match the timestamp and message using the regular expression
-                                message, timestamp = match_patterns(line, pattern_counts)
-                                if message:
-                                    #print(f'File: {log_file}: Line {line_number}: Time: {timestamp}: Message: {message}\n')
-                                    #print(f'{line}\n')
-                                    out.write(f'File: {log_file}: Line {line_number}: Time: {timestamp}: Message: {message}\n')
-                                    out.write(f'{line}\n')
-                                    pattern_counts += 1
-                    print(f'Pattern counts for {log_file}: {pattern_counts}\n')
-                    for pattern, description in patterns.items():
-                        count = re.findall(pattern, open(log_file).read())
-                        #print(f'{description}: {len(count)}')
-                        out.write(f'{description}: {len(count)}\n')
-                    out.write(f'Total matches for {log_file}: {pattern_counts}\n')
-                    out.write(f'{description}: {len(count)}\n')
+            paths =[cur/'Logs', cur/'SourceList.txt', cur/'file.attr.csv', cur/'userlist', cur/'Service.list'] #requested paths
+            pathcheck = sum(path.exists() for path in paths)
+            if pathcheck == len(paths):
+                print("All required files exist")
+                log_re_list = [re.compile(f'^(?P<timestamp>{timestamp_re}).*?(?P<message>.*)$') for timestamp_re in timestamp_re_list]
+                output_file = Path(input("Input your desired report save location in Linux absolute path: (e.g. /home/$USERNAME/Report.txt): \n"))
+                if output_file == Path('.'):
+                    output_file = Path.cwd()/'OutputReport.txt'
+                report = {} 
+                #collect none-users/disabled accounts which might be used for remote application shell exploitation
+                noneuser=[]
+                legituser=[]
+                with open('/etc/shells', 'r') as shellsf:
+                    shells = shellsf.read().splitlines()
+                    shells_pattern = '|'.join(shells)
+                with open('/etc/passwd', 'r') as file:
+                    for line in file.read().splitlines():
+                        for shell in shells:
+                            if shell in line:
+                                legituser.append(line.split(':')[0])
+                            else:
+                                noneuser.append(line.split(':')[0])
+                nonuser_pattern='|'.join(noneuser)
+                    #statement
+                with open(output_file, 'a') as out:
+                    out.write(f'Log Review Report\n')
+                    currentdate = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                    out.write(f'Generated in {currentdate}\n')
+                    for log_file in destination.rglob('*.log*'):
+                        pattern_counts = 0
+                        with open(log_file) as f:
+                            out.write(f'Report of {log_file}: \n')
+                            for line_number, line in enumerate(f, start=1):
+                                line = line.strip()
+                                if line:
+                                    # Try to match the timestamp and message using the regular expression
+                                    message, timestamp = match_patterns(line, pattern_counts)
+                                    if message:
+                                        #Evidence when matched
+                                        logging.debug(f'File: {log_file}: Line {line_number}: Time: {timestamp}: Message: {message}\n')
+                                        logging.debug(f'{line}\n')
+                                        out.write(f'1File: {log_file}: Line {line_number}: Time: {timestamp}: Message: {message}\n')
+                                        out.write(f'2{line}\n')
+                                        pattern_counts += 1
+                        #logging.debug(f'Total Pattern counts for {log_file}: {pattern_counts}\n')
+                        for pattern, description in patterns.items():
+                            count = re.findall(pattern, open(log_file).read())
+                            logging.debug(f'{description}: {len(count)}')
+                            out.write(f'3{description}: {len(count)}\n')
+                        #Summary of hit matched
+                        out.write(f'Summary of Report\n')
+                        out.write(f'4Total matches for {log_file}: {pattern_counts}\n')
+                        #out.write(f'5{description}: {len(count)}\n')
+                        out.write(f'---'*10+"\n")
 
 
 
@@ -469,6 +481,8 @@ if args.Run_OP in {1,2,3}: #Check if run option is out of 1-3 range
                         #
 
                         #cron log can be separated, while defaulted to syslog
+            else:
+                print("Previous process unfinished")
     
     else:
         print("Invalid option (less than 1 or more than 3), exit now")
