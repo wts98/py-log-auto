@@ -1,4 +1,4 @@
-#!/usr/bin/python3
+#!/usr/bin/env python3
 import re
 import shutil
 import subprocess
@@ -416,6 +416,7 @@ if args.Run_OP in {1,2,3}: #Check if run option is out of 1-3 range
             print(f"Please redo the log collection via `sudo python3 .py 1")
     elif args.Run_OP == 3:
             print("Running Op3")
+            cur = Path.cwd()
             paths =[cur/'Logs', cur/'SourceList.txt', cur/'file.attr.csv', cur/'userlist', cur/'Service.list'] #requested paths
             pathcheck = sum(path.exists() for path in paths)
             if pathcheck == len(paths):
@@ -442,8 +443,9 @@ if args.Run_OP in {1,2,3}: #Check if run option is out of 1-3 range
                     #statement
                 with open(output_file, 'a') as out:
                     out.write(f'Log Review Report\n')
-                    currentdate = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                    currentdate = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
                     out.write(f'Generated in {currentdate}\n')
+                    out.write('\n'+'---'*30+"\n")
                     for log_file in destination.rglob('*.log*'):
                         pattern_counts = 0
                         with open(log_file) as f:
@@ -455,21 +457,22 @@ if args.Run_OP in {1,2,3}: #Check if run option is out of 1-3 range
                                     message, timestamp = match_patterns(line, pattern_counts)
                                     if message:
                                         #Evidence when matched
-                                        logging.debug(f'File: {log_file}: Line {line_number}: Time: {timestamp}: Message: {message}\n')
+                                        logging.debug(f'File: {log_file};\n Line number: {line_number};\n Timestamp: {timestamp};\n Incident: {message};\n')
                                         logging.debug(f'{line}\n')
-                                        out.write(f'1File: {log_file}: Line {line_number}: Time: {timestamp}: Message: {message}\n')
-                                        out.write(f'2{line}\n')
+                                        out.write(f'File: {log_file};\n Line number: {line_number};\n Timestamp: {timestamp};\n Incident: {message};\n')
+                                        out.write(f'Evidence: {line}\n')
+                                        out.write('---'*30+"\n")
                                         pattern_counts += 1
                         #logging.debug(f'Total Pattern counts for {log_file}: {pattern_counts}\n')
                         for pattern, description in patterns.items():
                             count = re.findall(pattern, open(log_file).read())
                             logging.debug(f'{description}: {len(count)}')
-                            out.write(f'3{description}: {len(count)}\n')
+                            out.write(f'{description}: {len(count)}\n')
                         #Summary of hit matched
                         out.write(f'Summary of Report\n')
-                        out.write(f'4Total matches for {log_file}: {pattern_counts}\n')
+                        out.write(f'Total matches for {log_file}: {pattern_counts}\n')
                         #out.write(f'5{description}: {len(count)}\n')
-                        out.write(f'---'*10+"\n")
+                        out.write('---'*30+"\n")
 
 
 
@@ -482,7 +485,7 @@ if args.Run_OP in {1,2,3}: #Check if run option is out of 1-3 range
 
                         #cron log can be separated, while defaulted to syslog
             else:
-                print("Previous process unfinished")
+                print("Previous procedure unfinished, please redo log gathering and/or log classification via `python3 newer.py {1/2}`")
     
     else:
         print("Invalid option (less than 1 or more than 3), exit now")
